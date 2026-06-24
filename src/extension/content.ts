@@ -24,74 +24,114 @@ function ensureInjectedStyles(): void {
       right: 8px;
       z-index: 9999;
       display: flex;
-      gap: 4px;
+      gap: 6px;
       align-items: center;
-      padding: 5px 6px;
+      padding: 6px 8px;
       border-radius: 999px;
-      background: rgba(8, 12, 20, 0.82);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      transition: opacity 0.2s, transform 0.2s;
     }
 
     [data-curator-button] {
-      border: 0;
+      border: 1px solid transparent;
       border-radius: 999px;
-      padding: 5px 9px;
+      padding: 6px 12px;
       color: white;
-      font: 600 10px/1 "Segoe UI", Tahoma, sans-serif;
+      font: 600 11px/1 "Inter", "Segoe UI", Tahoma, sans-serif;
       cursor: pointer;
-      letter-spacing: 0.2px;
-      transition: opacity 0.15s;
+      letter-spacing: 0.02em;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    [data-curator-button]:hover { opacity: 0.85; }
+    [data-curator-button]:hover {
+      transform: translateY(-1px);
+    }
 
-    [data-curator-button="hidden"]      { background: #8f2d2d; }
-    [data-curator-button="watched"]     { background: #245c47; }
-    [data-curator-button="watch_later"] { background: #1d3a6b; }
+    [data-curator-button="hidden"] { 
+      background: rgba(239, 68, 68, 0.15); 
+      color: #fca5a5;
+    }
+    [data-curator-button="hidden"]:hover {
+      background: rgba(239, 68, 68, 0.3);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    [data-curator-button="watched"] { 
+      background: rgba(16, 185, 129, 0.15); 
+      color: #6ee7b7;
+    }
+    [data-curator-button="watched"]:hover {
+      background: rgba(16, 185, 129, 0.3);
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+
+    [data-curator-button="watch_later"] { 
+      background: rgba(59, 130, 246, 0.15); 
+      color: #93c5fd;
+    }
+    [data-curator-button="watch_later"]:hover {
+      background: rgba(59, 130, 246, 0.3);
+      border-color: rgba(59, 130, 246, 0.5);
+    }
 
     [data-curator-badge] {
       display: inline-flex;
       align-items: center;
       gap: 3px;
-      padding: 3px 7px;
+      padding: 4px 8px;
       border-radius: 999px;
-      background: rgba(255,200,0,0.18);
-      color: #f5c518;
-      font: 700 10px/1 "Segoe UI", Tahoma, sans-serif;
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      font: 700 11px/1 "Inter", "Segoe UI", Tahoma, sans-serif;
       white-space: nowrap;
     }
 
     #${TOAST_ID} {
       position: fixed;
-      bottom: 24px;
+      bottom: 32px;
       left: 50%;
-      transform: translateX(-50%) translateY(0);
+      transform: translateX(-50%) translateY(20px);
+      opacity: 0;
       z-index: 99999;
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 10px 18px;
-      background: rgba(10, 16, 26, 0.95);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border-radius: 10px;
-      color: white;
-      font: 500 13px/1 "Segoe UI", Tahoma, sans-serif;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      gap: 16px;
+      padding: 12px 20px;
+      background: rgba(2, 6, 23, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 12px;
+      color: #f8fafc;
+      font: 500 14px/1 "Inter", "Segoe UI", Tahoma, sans-serif;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
       pointer-events: auto;
-      transition: opacity 0.3s;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    #${TOAST_ID}.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
     }
 
     #${TOAST_ID} button {
-      border: 1px solid rgba(255,255,255,0.25);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 999px;
-      background: transparent;
+      background: rgba(255, 255, 255, 0.05);
       color: white;
-      font: 600 11px/1 "Segoe UI", Tahoma, sans-serif;
+      font: 600 12px/1 "Inter", "Segoe UI", Tahoma, sans-serif;
       cursor: pointer;
-      padding: 4px 10px;
+      padding: 6px 14px;
+      transition: background 0.2s;
+    }
+    
+    #${TOAST_ID} button:hover {
+      background: rgba(255, 255, 255, 0.15);
     }
   `;
 
@@ -198,7 +238,10 @@ function showUndoToast(action: string): void {
 
   const label = action === "hidden" ? "Hidden" : action === "watched" ? "Marked watched" : "Saved for later";
   toast.innerHTML = `<span>${label}</span><button id="curator-undo-btn">Undo</button>`;
-  toast.style.opacity = "1";
+  
+  // Force a reflow so the transition triggers
+  void toast.offsetWidth;
+  toast.classList.add("show");
 
   document.getElementById("curator-undo-btn")?.addEventListener("click", () => {
     void undoLastAction();
@@ -211,7 +254,9 @@ function showUndoToast(action: string): void {
 
 function dismissToast(): void {
   const toast = document.getElementById(TOAST_ID);
-  if (toast) toast.style.opacity = "0";
+  if (toast) {
+    toast.classList.remove("show");
+  }
   if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
 }
 
