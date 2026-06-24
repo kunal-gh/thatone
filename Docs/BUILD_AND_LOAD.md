@@ -1,108 +1,97 @@
 # Build And Load
 
-## Local Development
+## Local Web App
 
-### Install
+Use this for normal live testing and future Vercel-style deployment.
 
 ```bash
 npm install
+npm run dev -- --host 127.0.0.1 --port 4173
 ```
 
-### Build
+Open:
+
+```text
+http://127.0.0.1:4173/
+```
+
+The root page (`index.html`) loads the full app. It works without Chrome extension APIs by using localStorage plus IndexedDB.
+
+## Production Build
 
 ```bash
 npm run build
 ```
 
-The production extension bundle is written to:
+Build output:
 
-- `dist/manifest.json`
+- `dist/index.html`: full web app entry
+- `dist/app.html`: extension side-panel/full-app entry
+- `dist/popup.html`: extension popup entry
+- `dist/manifest.json`: MV3 manifest
 - `dist/extension/background.js`
 - `dist/extension/content.js`
-- `dist/index.html` (popup)
-- `dist/app.html` (management app)
-- `dist/assets/` (React bundles, CSS)
+- `dist/data/catalog/`: bundled catalog files
+- `dist/assets/`: React/CSS bundles
 
-### Test
+## Verify Everything
 
 ```bash
-npm test
+npm run verify
+npm audit
 ```
 
-Runs Vitest. All adapter tests and recommendation engine tests should pass.
+`npm run verify` runs:
 
-## Load In Chrome
+1. Vitest suite
+2. TypeScript and Vite production build
+3. Secret scan
 
-1. Open `chrome://extensions`
-2. Enable Developer mode (top right toggle)
-3. Click `Load unpacked`
-4. Select the `dist` folder
+Current expected result:
 
-## Current User Flows
+- 38 tests passing
+- build passes
+- secret scan passes
+- audit reports 0 vulnerabilities
 
-### On JioHotstar Pages
-1. Open any JioHotstar page in Chrome.
-2. The content script scans for movie/show cards across:
-   - Homepage carousels
-   - Search results
-   - Detail page "More like this" rails
-3. Each detected card gets floating **Hide** (dark red) and **Watched** (dark green) buttons.
-4. Clicking Hide/Watched: persists to `chrome.storage.local`, hides the card immediately.
-5. Hidden/watched titles are suppressed on next visit automatically.
+## Load Extension In Chrome
 
-### Popup
-1. Click the extension icon in Chrome toolbar.
-2. See counts of hidden and watched titles.
-3. Click "Open management app" to go to the full app.
-
-### Management App (app.html)
-**Manage tab:**
-- See all hidden/watched items sorted newest-first.
-- Remove any item from state.
-- Export full backup (JSON, includes taste graph).
-- Import a previous backup.
-
-**Recommendations tab:**
-- See up to 20 recommendations from the catalog.
-- Switch exploration mode: Comfort (5% exploration), Balanced (15%), Surprise (35%).
-- Type a mood filter (e.g. "thriller", "comedy") to narrow recommendations.
-- Click "Show score breakdown" per item to see the 7-weight scoring debug panel.
-- Click "Watch on JioHotstar" to open the title.
+1. Run `npm run build`.
+2. Open `chrome://extensions`.
+3. Enable Developer mode.
+4. Click `Load unpacked`.
+5. Select `dist/`.
 
 ## Catalog Commands
 
 ```bash
-# 91mobiles seed (no API key needed, ~23 items)
+# 91mobiles seed fallback, no key required
 npm run catalog:seed
 
-# Full TMDB-first catalog (requires TMDB_BEARER_TOKEN in .env)
-TMDB_BEARER_TOKEN=<your_token> npm run catalog:tmdb
+# Full TMDB catalog, requires .env values
+npm run catalog:tmdb
 ```
 
-After generating the catalog, run `npm run build` again so the extension bundles include the catalog path reference. The catalog file itself goes in `data/catalog/` — copy it to `dist/` or serve it from a static host.
+Environment variables:
 
-## Environment Variables
-
-Copy `.env.example` to `.env` and fill in:
-
-```
-TMDB_BEARER_TOKEN=   # Required for catalog:tmdb
-OMDB_API_KEY=        # Optional — adds IMDb ratings to catalog
+```text
+TMDB_BEARER_TOKEN=
+OMDB_API_KEY=
 ```
 
-## If Another MCP Resumes Work
+Never commit `.env`.
 
-Read in this order:
+## Entry Point Map
 
-1. `tasks/TASKS.md`
-2. `logs/DEV_LOG.md`
-3. `docs/HANDOFF.md`
-4. `docs/PROJECT_BRIEF.md`
-5. `Docs/revised_architecture_blueprint.md`
+| File | Purpose |
+| --- | --- |
+| `index.html` | Root local web app and Vercel entry |
+| `app.html` | Extension side panel/full app |
+| `popup.html` | Extension toolbar popup |
+| `public/manifest.json` | Chrome MV3 manifest |
 
-## Known Limits Right Now
+## Troubleshooting
 
-- Catalog is the 23-item seed until `catalog:tmdb` is run with a token.
-- Taste graph is updated from the app only — not yet from the content script.
-- chrome.storage.local has a 10MB cap; IndexedDB (Dexie) needed for large catalogs.
-- No end-to-end extension loading test yet.
+- If the app shows fewer than 5,752 catalog titles, open System Health and click `REBUILD LOCAL CATALOG`.
+- If extension state looks duplicated, use the app views; they dedupe mirrored title/url records.
+- If the dev server port is busy, run Vite on another port and open that URL.

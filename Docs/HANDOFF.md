@@ -1,113 +1,117 @@
 # Handoff
 
-Last updated: 2026-06-24 (Session 3)
+Last updated: 2026-06-24 (Session 4)
 
-## What This Project Is
+## Current State
 
-A local-first Chrome extension called "Personal JioHotstar Curator". The extension:
-1. Hides unwanted JioHotstar titles permanently across refreshes
-2. Tracks watched content
-3. Saves Watch Later items
-4. Builds a personal taste graph from user actions (Hide/Watched/Watch Later/Swipe)
-5. Recommends unseen, unblocked titles using deterministic scoring
-6. Provides a full 6-tab discovery app and a side panel
+The project is now a local-first JioHotstar curation product with two working surfaces:
 
-## What Has Been Built (Complete as of Session 3)
+- **Web app/PWA mode:** open `http://127.0.0.1:4173/` while the dev server is running. This is the easiest way to test and is the path toward Vercel deployment.
+- **Chrome extension mode:** build `dist/` and load it unpacked in Chrome. The extension injects controls into JioHotstar pages and can open the side panel/full app.
+
+The app is intentionally local-first. There is no backend requirement for the current product. The health indicator says `Backend: Not required` because catalog, state, taste graph, and action log all run in the browser.
+
+## What Is Built
+
+### App Tabs
+
+| Tab | Purpose |
+| --- | --- |
+| Recommendations | Ranked catalog recommendations with mode, type, mood, actions, and score breakdown |
+| Swipe Deck | Fast training deck seeded from recommendations |
+| Manage | Hidden/watched list, remove, export, import |
+| Watch Later | Queue with open, mark watched, and remove |
+| Taste Graph | Signed taste-edge weights plus centroid view |
+| System Health | Runtime/storage/catalog/DB/action-log indicators and catalog rebuild |
 
 ### Extension Surfaces
-- **Popup**: 4 stats (hidden, watched, watch later, taste signals) + open app + open side panel buttons
-- **Content script**: Detects cards, injects Hide / Watched / Watch Later buttons + rating badge + undo toast
-- **Background worker**: `UPDATE_TASTE_GRAPH` and `FETCH_CARD_META` message handlers, daily alarm
-- **Side panel**: Full 6-tab app served from `app.html`
 
-### 6-Tab Discovery App (`app.html`)
-| Tab | What it does |
-| --- | --- |
-| ⚙️ Manage | Lists hidden/watched items, filter, remove, export/import backup |
-| 🕐 Watch Later | Saved items with Open / Mark Watched / Remove actions |
-| 🃏 Swipe | Full-card deck with TMDB poster, emoji actions, animated feedback |
-| ⭐ Recommendations | 7-weight scored recs with mood/type/exploration filters + score debug bars |
-| 🎭 Taste | Signed weight visualization per node type + centroid vector |
-| 📊 Catalog | DB stats, last 10 actions, force re-sync |
+- `popup.html`: compact extension popup with stats and launch buttons.
+- `app.html`: extension side panel/full app entry.
+- `index.html`: localhost/Vercel full app entry.
+- `src/extension/content.ts`: detects cards, injects Hide/Watched/Later controls, rating badge, undo toast.
+- `src/extension/background.ts`: handles `SYNC_TASTE_GRAPH`, `FETCH_CARD_META`, and daily catalog alarm.
 
-### Storage
-- **chrome.storage.local**: `curatorState` (items), `curatorTaste` (taste graph), settings
-- **IndexedDB (Dexie)**: `catalog` table (thousands of TMDB items), `user_actions` log table
+### Data and Storage
 
-### Catalog Pipeline
-- `scripts/catalog/build-tmdb-catalog.mjs`: TMDB-first, auto-discovers JioHotstar provider IDs, paginates, enriches, outputs to `public/data/catalog/`
-- `scripts/catalog/build-catalog.mjs`: 91mobiles seed builder
-- `src/shared/catalog.ts`: `syncCatalogToDb()`, `loadCatalog()`, `matchCatalogItem()`, `matchCatalogItemAsync()`
+- `public/data/catalog/tmdb-jiohotstar-catalog.json`: full generated catalog, 5,752 unique items.
+- `public/data/catalog/91mobiles-jiohotstar-seed.json`: 23-item fallback/validator catalog.
+- `src/shared/db.ts`: Dexie database with `catalog` and `user_actions`.
+- `src/shared/storage.ts`: Chrome storage in extension mode, localStorage fallback in web mode.
+- `src/shared/curation.ts`: shared action mutations and graph syncing.
+- `src/shared/catalog.ts`: no-store catalog fetch, Dexie sync, URL/title matching.
 
 ### Recommendation Engine
-- `src/shared/taste.ts`: taste graph, temporal decay, scoring, centroid
-- `src/shared/recommend.ts`: hard filters, 7-weight formula, diversity rerank, exploration injection
-- Score formula: `0.35*embedding + 0.20*taste + 0.15*quality + 0.10*mood + 0.08*novelty + 0.07*diversity + 0.05*freshness - penalties`
 
-### CI/Automation
-- `.github/workflows/catalog-refresh.yml`: weekly TMDB pull, auto-commit
-- Requires `TMDB_BEARER_TOKEN` secret in GitHub repo settings
-
-### Tests
-- 35 tests passing (`npm test`)
-- Adapter: 17 tests (URL patterns, title extraction, fixtures)
-- Recommend: 18 tests (hard filters, scoring, diversity, pipeline)
-
-## File Map
+- `src/shared/recommend.ts`: hard filters, scoring, diversity rerank, exploration injection.
+- Score formula remains:
 
 ```
-src/
-  shared/
-    types.ts         ← ItemState (hidden|watched|watch_later), UserAction, CatalogItem, TasteGraph
-    normalize.ts     ← title/URL normalization
-    storage.ts       ← chrome.storage CRUD + logUserAction + getRecentActions
-    db.ts            ← Dexie: catalog + user_actions tables
-    catalog.ts       ← syncCatalogToDb, loadCatalog, matchCatalogItem(Async)
-    taste.ts         ← taste graph, temporal decay, scoring, centroid
-    recommend.ts     ← full recommendation pipeline
-    recommend.test.ts
-  extension/
-    adapter.ts       ← DOM extraction (testable, no chrome deps)
-    adapter.test.ts
-    content.ts       ← cards: Hide/Watched/Later buttons + toast + badge + undo
-    background.ts    ← UPDATE_TASTE_GRAPH + FETCH_CARD_META + alarm
-    fixtures/        ← HTML fixtures for adapter tests
-  app/
-    App.tsx          ← 6-tab app
-    main.tsx
-  popup/
-    App.tsx          ← popup: 4 stats + open app + side panel
-    main.tsx
-  styles/
-    base.css
-
-scripts/catalog/
-  build-catalog.mjs        ← 91mobiles seed
-  build-tmdb-catalog.mjs   ← TMDB full catalog
-
-public/
-  manifest.json    ← v0.3.0 with sidePanel + alarms
-  data/catalog/    ← generated JSON lands here, bundled by Vite
-
-.github/workflows/
-  catalog-refresh.yml      ← weekly CI catalog rebuild
-
-tasks/TASKS.md · logs/DEV_LOG.md · Docs/HANDOFF.md
+0.35*embedding
++ 0.20*taste
++ 0.15*quality
++ 0.10*mood
++ 0.08*novelty
++ 0.07*diversity
++ 0.05*freshness
+- penalties
 ```
 
-## How To Continue
+## Security State
 
-1. **Set GitHub secret**: Add `TMDB_BEARER_TOKEN` in repo Settings → Secrets → Actions.
-2. **Test extension**: `npm run build` → load `dist/` as unpacked extension in Chrome.
-3. **Next milestone (Phase 4)**: Add a logistic regression classifier using the `user_actions` log as training data.
-4. **Phase 5**: Hosted PWA with `externally_connectable` bridge.
-5. **Phase 6**: Natural language search / LLM explanations.
+- `.env` is ignored and was not committed.
+- `npm run security:scan` scans tracked and untracked non-ignored files.
+- `npm audit` is clean after pinning `esbuild` with an override.
+- `vercel.json` includes CSP, referrer policy, content type, and permissions headers.
+- Playback stays on official JioHotstar URLs. No DRM, stream, cookie, or account-token bypass exists in this implementation.
 
-## Assumptions & Constraints
+## How To Run
 
-- Local-first; no backend until sync is needed.
-- Adapter uses layered heuristics; avoids single CSS class dependency.
-- Hard filters always execute before scoring.
-- LLM/AI deferred to Phase 6.
-- `chrome.storage.sync` is not used for catalog (too small).
-- Rating badges are best-effort; gracefully hidden if catalog item not found.
+```bash
+npm install
+npm run dev -- --host 127.0.0.1 --port 4173
+```
+
+Then open:
+
+```text
+http://127.0.0.1:4173/
+```
+
+## How To Verify
+
+```bash
+npm run verify
+npm audit
+```
+
+Expected:
+
+- 38 tests passing.
+- Production build passes.
+- Secret scan passes.
+- Audit reports 0 vulnerabilities.
+
+## How To Build Extension
+
+```bash
+npm run build
+```
+
+Then open `chrome://extensions`, enable Developer mode, click `Load unpacked`, and select `dist/`.
+
+## Important Notes For Next MCP
+
+1. Do not read or print `.env`; secrets may exist locally.
+2. Keep `public/data/catalog/tmdb-jiohotstar-catalog.json` content IDs in the `tmdb:movie:{id}` / `tmdb:show:{id}` format. Plain `tmdb:{id}` causes movie/show collisions in IndexedDB.
+3. If catalog count is below 5,752 in the app, use System Health -> `REBUILD LOCAL CATALOG` or clear IndexedDB.
+4. Do not reintroduce extension-only storage assumptions into the app. Web mode must work without `chrome.*` APIs.
+5. Keep the design monochrome/minimal unless the user requests another redesign.
+
+## Remaining Work
+
+- Push this Session 4 state to GitHub after final verification.
+- Optional Vercel deploy setup.
+- Optional extension-to-hosted-app bridge with `externally_connectable`.
+- Optional Playwright browser smoke tests for tabs.
+- Optional smarter learning from `user_actions`.

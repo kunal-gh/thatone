@@ -14,19 +14,23 @@ const SEED_URL = typeof chrome !== "undefined" && chrome.runtime?.getURL
   : "/data/catalog/91mobiles-jiohotstar-seed.json";
 
 export async function syncCatalogToDb(): Promise<void> {
-  // Only sync if DB is empty for now (Phase 2 optimization)
-  const count = await db.catalog.count();
-  if (count > 0) return;
-
   try {
-    let response = await fetch(CATALOG_URL);
+    let response = await fetch(CATALOG_URL, { cache: "no-store" });
     if (!response.ok) {
-      response = await fetch(SEED_URL);
-      if (!response.ok) return;
+      response = await fetch(SEED_URL, { cache: "no-store" });
+      if (!response.ok) {
+        return;
+      }
     }
 
     const manifest = (await response.json()) as CatalogManifest;
     if (Array.isArray(manifest.items) && manifest.items.length > 0) {
+      const count = await db.catalog.count();
+      if (count === manifest.items.length) {
+        return;
+      }
+
+      await db.catalog.clear();
       await db.catalog.bulkPut(manifest.items);
       console.log(`Synced ${manifest.items.length} items to Dexie catalog.`);
     }

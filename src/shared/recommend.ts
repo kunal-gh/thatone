@@ -13,6 +13,8 @@ import {
   freshnessScore,
   normalizeRating
 } from "./catalog";
+import { canonicalKeyFromTitle, canonicalKeyFromUrl } from "./normalize";
+import { getUniqueStoredItems } from "./storage";
 import { tasteGraphScore } from "./taste";
 
 // ─── Exploration mode config ──────────────────────────────────────────────────
@@ -38,17 +40,17 @@ export function buildHardFilters(state: StoredState): HardFilterSets {
   const hiddenKeys = new Set<string>();
   const watchedKeys = new Set<string>();
 
-  for (const item of Object.values(state.items)) {
+  for (const item of getUniqueStoredItems(state)) {
     if (item.state === "hidden") {
       hiddenKeys.add(item.canonicalKey);
-      if (item.title) {
-        hiddenKeys.add(`title:${item.title.toLowerCase().trim()}`);
-      }
+      hiddenKeys.add(canonicalKeyFromTitle(item.title));
+      const urlKey = canonicalKeyFromUrl(item.sourceUrl);
+      if (urlKey) hiddenKeys.add(urlKey);
     } else if (item.state === "watched") {
       watchedKeys.add(item.canonicalKey);
-      if (item.title) {
-        watchedKeys.add(`title:${item.title.toLowerCase().trim()}`);
-      }
+      watchedKeys.add(canonicalKeyFromTitle(item.title));
+      const urlKey = canonicalKeyFromUrl(item.sourceUrl);
+      if (urlKey) watchedKeys.add(urlKey);
     }
   }
 
@@ -65,21 +67,16 @@ export function isHardFiltered(
   filters: HardFilterSets,
   includeWatched = false
 ): boolean {
-  const titleKey = `title:${item.title.toLowerCase().trim()}`;
+  const titleKey = canonicalKeyFromTitle(item.title);
 
   if (filters.hiddenKeys.has(titleKey)) return true;
 
   if (!includeWatched && filters.watchedKeys.has(titleKey)) return true;
 
   if (item.jiohotstar_url) {
-    try {
-      const parsed = new URL(item.jiohotstar_url);
-      const urlKey = `url:${parsed.pathname.toLowerCase().replace(/\/+$/, "")}`;
-      if (filters.hiddenKeys.has(urlKey)) return true;
-      if (!includeWatched && filters.watchedKeys.has(urlKey)) return true;
-    } catch {
-      // ignore malformed URLs
-    }
+    const urlKey = canonicalKeyFromUrl(item.jiohotstar_url);
+    if (urlKey && filters.hiddenKeys.has(urlKey)) return true;
+    if (urlKey && !includeWatched && filters.watchedKeys.has(urlKey)) return true;
   }
 
   return false;
@@ -279,7 +276,7 @@ export function getRecommendations(
 
   // Collect recent watched genres for novelty scoring
   const recentGenres = new Set<string>();
-  for (const storedItem of Object.values(state.items)) {
+  for (const storedItem of getUniqueStoredItems(state)) {
     if (storedItem.state === "watched") {
       const matched = catalog.find(
         (c) =>

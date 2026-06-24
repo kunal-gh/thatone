@@ -185,3 +185,27 @@ export function emptyTasteGraph(): TasteGraph {
     centroid_updated_at: null
   };
 }
+
+export function buildTasteGraph(
+  entries: Array<{ action: ItemState; item: CatalogItem }>
+): TasteGraph {
+  let graph = emptyTasteGraph();
+  const watchedItems: CatalogItem[] = [];
+
+  for (const entry of entries) {
+    if (entry.action === "watch_later") continue;
+    graph = updateTasteGraph(graph, entry.action, entry.item);
+
+    if (entry.action === "watched") {
+      watchedItems.push(entry.item);
+    }
+  }
+
+  const centroid = computeTasteCentroid(watchedItems);
+
+  return {
+    ...graph,
+    taste_centroid: centroid,
+    centroid_updated_at: centroid ? new Date().toISOString() : null
+  };
+}

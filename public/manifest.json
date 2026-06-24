@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Personal JioHotstar Curator",
   "description": "Hide unwanted titles, track watched content, get personal recommendations, and build a cleaner JioHotstar discovery flow.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "permissions": ["storage", "tabs", "alarms", "sidePanel"],
   "host_permissions": [
     "https://*.hotstar.com/*",
@@ -15,7 +15,7 @@
   },
   "action": {
     "default_title": "JioHotstar Curator",
-    "default_popup": "index.html"
+    "default_popup": "popup.html"
   },
   "side_panel": {
     "default_path": "app.html"

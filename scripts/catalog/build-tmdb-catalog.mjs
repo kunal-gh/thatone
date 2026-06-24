@@ -289,7 +289,7 @@ function normalizeItem(raw, enriched, omdb, mediaType, providerIds) {
 
   const jiohotstarUrl = extractJioHotstarUrl(providers, providerIds);
   const tmdbId = raw.id;
-  const contentId = `tmdb:${tmdbId}`;
+  const contentId = `tmdb:${mediaType === "movie" ? "movie" : "show"}:${tmdbId}`;
 
   const embedding = buildEmbedding(raw, details);
 

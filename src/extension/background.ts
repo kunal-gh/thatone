@@ -1,17 +1,8 @@
 import { matchCatalogItemAsync } from "../shared/catalog";
-import { getTasteGraph, setTasteGraph } from "../shared/storage";
-import { updateTasteGraph } from "../shared/taste";
-import type { ItemState } from "../shared/types";
+import { syncTasteGraphFromCurrentState } from "../shared/curation";
 
-// ─── Message types ────────────────────────────────────────────────────────────
-
-type UpdateTasteGraphMessage = {
-  type: "UPDATE_TASTE_GRAPH";
-  payload: {
-    title: string;
-    url?: string;
-    state: ItemState;
-  };
+type SyncTasteGraphMessage = {
+  type: "SYNC_TASTE_GRAPH";
 };
 
 type FetchCardMetaMessage = {
@@ -22,47 +13,29 @@ type FetchCardMetaMessage = {
   };
 };
 
-type CuratorMessage = UpdateTasteGraphMessage | FetchCardMetaMessage;
-
-// ─── Message listener ─────────────────────────────────────────────────────────
+type CuratorMessage = SyncTasteGraphMessage | FetchCardMetaMessage;
 
 chrome.runtime.onMessage.addListener(
   (message: CuratorMessage, _sender, sendResponse) => {
-    if (message.type === "UPDATE_TASTE_GRAPH") {
-      void handleTasteGraphUpdate(message.payload);
+    if (message.type === "SYNC_TASTE_GRAPH") {
+      void handleTasteGraphSync();
       sendResponse({ success: true });
       return false;
     }
 
     if (message.type === "FETCH_CARD_META") {
-      // Must return true to keep channel open for async response
       void handleFetchCardMeta(message.payload, sendResponse);
       return true;
     }
   }
 );
 
-// ─── Handlers ─────────────────────────────────────────────────────────────────
-
-async function handleTasteGraphUpdate(payload: {
-  title: string;
-  url?: string;
-  state: ItemState;
-}): Promise<void> {
+async function handleTasteGraphSync(): Promise<void> {
   try {
-    const catalogItem = await matchCatalogItemAsync(payload.title, payload.url);
-    if (!catalogItem) {
-      console.log(`[Curator] No catalog item for taste update: ${payload.title}`);
-      return;
-    }
-
-    const graph = await getTasteGraph();
-    const updatedGraph = updateTasteGraph(graph, payload.state, catalogItem);
-    await setTasteGraph(updatedGraph);
-
-    console.log(`[Curator] Taste graph updated: ${payload.title} → ${payload.state}`);
+    await syncTasteGraphFromCurrentState();
+    console.log("[Curator] Taste graph synced from local state.");
   } catch (err) {
-    console.error("[Curator] Failed to update taste graph:", err);
+    console.error("[Curator] Failed to sync taste graph:", err);
   }
 }
 
@@ -85,16 +58,14 @@ async function handleFetchCardMeta(
   }
 }
 
-// ─── Alarm: periodic catalog version check ────────────────────────────────────
-
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.alarms.create("catalog-check", {
-    periodInMinutes: 60 * 24 // once a day
+    periodInMinutes: 60 * 24
   });
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "catalog-check") {
-    console.log("[Curator] Catalog check alarm fired — nothing to update yet (static catalog).");
+    console.log("[Curator] Catalog check alarm fired - static catalog build still in use.");
   }
 });

@@ -12,3 +12,6 @@ tsconfig.tsbuildinfo
 tsconfig.node.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# Local runtime logs
+logs/*.log

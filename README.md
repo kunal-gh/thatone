@@ -1,80 +1,74 @@
 # Personal JioHotstar Curator
 
-Local-first Chrome extension and discovery app for:
+Local-first recommendation and filtering layer for JioHotstar.
 
-- permanently hiding unwanted JioHotstar titles
-- tracking watched content
-- building a personal taste profile
-- getting deterministic recommendations from a versioned JioHotstar catalog
-- keeping playback inside official JioHotstar pages
+The project gives you a clean discovery app plus a Chrome extension. It can hide unwanted titles, track watched items, keep a Watch Later queue, build a local taste graph, and recommend unseen titles from a generated JioHotstar catalog.
+
+The current build is deliberately DRM-safe: it only works with metadata, browser UI state, local storage, and official JioHotstar links.
+
+## Current Status
+
+- Full web app runs at `http://127.0.0.1:4173/`.
+- Chrome extension build works from `dist/`.
+- Full TMDB catalog is bundled: 5,752 unique titles.
+- Brutalist monochrome UI is active across app, popup, and injected controls.
+- Runtime health indicators are visible in the app.
+- Web mode works without Chrome APIs.
+- Secret scan and Vercel security headers are included.
 
 ## Project Memory
 
-These files are the source of truth for resuming work across MCP sessions:
+Read these files first when resuming development:
 
-- `tasks/TASKS.md`: active roadmap and task checklist
-- `logs/DEV_LOG.md`: chronological development log
-- `Docs/HANDOFF.md`: current development state and next actions
-- `Docs/PROJECT_BRIEF.md`: product objective and architectural guardrails
-- `Docs/revised_architecture_blueprint.md`: deep architecture blueprint (801 lines)
-
-## Current Build Scope
-
-All Phase 1 tasks are complete. The extension can:
-
-1. Load on JioHotstar pages
-2. Detect content cards across homepage carousels, search results, and detail page rails
-3. Inject Hide and Watched buttons on detected cards
-4. Persist hidden/watched state across page refreshes
-5. Show a popup with counts of hidden and watched titles
-6. Show a full management app with:
-   - **Manage tab**: list, remove, export/import hidden/watched items
-   - **Recommendations tab**: deterministic ranked catalog with score debug, exploration modes, mood filter
-7. Build a personal taste graph from user actions
-8. Score and rerank catalog items using the 7-weight formula from the architecture blueprint
-9. Import/export complete backup (state + taste graph)
-
-## Tech Direction
-
-- React 19 + TypeScript + Vite 7
-- Chrome Manifest V3
-- `chrome.storage.local` for extension state and taste graph
-- IndexedDB via Dexie planned for large catalog storage
-- TMDB API as primary catalog source
-- 91mobiles as secondary catalog source / validator
+- `tasks/TASKS.md`
+- `logs/DEV_LOG.md`
+- `Docs/HANDOFF.md`
+- `Docs/BUILD_AND_LOAD.md`
+- `Docs/CATALOG_PIPELINE.md`
+- `Docs/PROJECT_BRIEF.md`
 
 ## Commands
 
 ```bash
-# Install dependencies
 npm install
+npm run dev -- --host 127.0.0.1 --port 4173
+npm run verify
+npm audit
+```
 
-# Run tests (adapter + recommendation engine)
-npm test
+Catalog:
 
-# Build production extension bundle → dist/
-npm run build
-
-# Build 91mobiles seed catalog (no API key)
+```bash
 npm run catalog:seed
-
-# Build full TMDB catalog (requires TMDB_BEARER_TOKEN in .env)
 npm run catalog:tmdb
 ```
 
-## Loading the Extension
+`catalog:tmdb` requires `TMDB_BEARER_TOKEN` in `.env`. `OMDB_API_KEY` is optional.
 
-1. `npm run build`
-2. Open `chrome://extensions`
-3. Enable Developer mode
-4. Click `Load unpacked` → select the `dist/` folder
+## Extension Loading
 
-## Environment Variables
-
+```bash
+npm run build
 ```
-TMDB_BEARER_TOKEN=   # Required for catalog:tmdb
-OMDB_API_KEY=        # Optional — adds IMDb ratings to catalog
-```
+
+Then load `dist/` from `chrome://extensions` using Developer mode.
+
+## Main Architecture
+
+- React 19 + TypeScript + Vite 7
+- Chrome Manifest V3
+- Dexie/IndexedDB for catalog and action log
+- `chrome.storage.local` in extension mode
+- `localStorage` fallback in web mode
+- Static JSON catalog in `public/data/catalog/`
+- Deterministic recommendation engine with hard filters, taste graph, diversity, novelty, freshness, and exploration
+
+## Security Notes
+
+- `.env` is ignored.
+- `npm run security:scan` checks tracked and untracked non-ignored files for common key/token patterns.
+- `vercel.json` includes security headers.
+- `npm audit` is clean in the current dependency state.
 
 ## Repository
 

@@ -72,7 +72,7 @@ export type TmdbMeta = {
 };
 
 export type CatalogItem = {
-  content_id: string;           // internal stable ID: "tmdb:{id}" or "title:{key}"
+  content_id: string;           // internal stable ID: "tmdb:movie:{id}", "tmdb:show:{id}", or "title:{key}"
   source: "tmdb" | "91mobiles" | "omdb" | "manual";
   scraped_at: string;
 
