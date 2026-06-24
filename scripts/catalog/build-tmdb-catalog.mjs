@@ -24,7 +24,7 @@ import { resolve } from "node:path";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const OMDB_BASE = "https://www.omdbapi.com";
-const OUTPUT_FILE = resolve(process.cwd(), "data", "catalog", "tmdb-jiohotstar-catalog.json");
+const OUTPUT_FILE = resolve(process.cwd(), "public", "data", "catalog", "tmdb-jiohotstar-catalog.json");
 const CATALOG_VERSION = "2.0.0";
 
 // JioHotstar provider IDs on TMDB (India region)
@@ -49,25 +49,31 @@ async function tmdbFetch(path, params = {}) {
   }
 
   for (let attempt = 0; attempt < 5; attempt++) {
-    const res = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${TMDB_TOKEN}`,
-        Accept: "application/json"
+    try {
+      const res = await fetch(url.toString(), {
+        headers: {
+          Authorization: `Bearer ${TMDB_TOKEN}`,
+          Accept: "application/json"
+        }
+      });
+
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get("Retry-After") ?? "2", 10);
+        console.warn(`  ⏳ Rate limited — waiting ${retryAfter}s…`);
+        await sleep(retryAfter * 1000);
+        continue;
       }
-    });
 
-    if (res.status === 429) {
-      const retryAfter = parseInt(res.headers.get("Retry-After") ?? "2", 10);
-      console.warn(`  ⏳ Rate limited — waiting ${retryAfter}s…`);
-      await sleep(retryAfter * 1000);
-      continue;
+      if (!res.ok) {
+        throw new Error(`TMDB ${path} → HTTP ${res.status}`);
+      }
+
+      return res.json();
+    } catch (err) {
+      if (attempt === 4) throw err;
+      console.warn(`  ⏳ Network error on attempt ${attempt + 1}: ${err.message} — retrying…`);
+      await sleep(2000);
     }
-
-    if (!res.ok) {
-      throw new Error(`TMDB ${path} → HTTP ${res.status}`);
-    }
-
-    return res.json();
   }
 
   throw new Error(`TMDB ${path} → failed after 5 attempts`);
@@ -372,7 +378,7 @@ async function main() {
     await sleep(150);
   }
 
-  await mkdir(resolve(process.cwd(), "data", "catalog"), { recursive: true });
+  await mkdir(resolve(process.cwd(), "public", "data", "catalog"), { recursive: true });
 
   const output = {
     generated_at: new Date().toISOString(),

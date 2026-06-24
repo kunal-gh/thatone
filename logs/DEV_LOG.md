@@ -1,103 +1,99 @@
-# Development Log
+# Dev Log
 
-## 2026-06-24 — Session 2: P1-07, P1-09, P1-10 completion
+## Session 3 — 2026-06-24 (Phase 3 Complete)
 
-### Summary
+### Goal
 
-Completed all remaining Phase 1 tasks:
+Complete all remaining development tasks: Watch Later, Swipe Deck, Taste Controls, Catalog Health, Undo Toast, Rating Badges, GitHub Actions.
 
-**P1-07: Adapter coverage**
-- Expanded `CONTENT_URL_PATTERN` to include `/originals/`, `/episodes/`, `/series/`, `/detail/`
-- Added 5 new `extractTitle` fallbacks: `data-title`, `title` attr, inner `[aria-label]`, `data-*` on images, nearby heading via class patterns
-- Expanded `resolveCardElement` with `[data-item]`, `[data-card]`, `[class*='card']`, `[class*='item']`, `[class*='tile']` selectors
-- Created 3 HTML fixture files: `homepage-rail.html`, `search-results.html`, `detail-page-rail.html`
-- Expanded `adapter.test.ts` from 3 to 10+ test cases covering all layouts
-- Exported `CONTENT_URL_PATTERN` constant for reuse
+### Tasks Completed
 
-**P1-09: Catalog pipeline**
-- Created `scripts/catalog/build-tmdb-catalog.mjs`: TMDB-first catalog builder
-  - Auto-discovers JioHotstar provider IDs for India from TMDB watch-provider endpoint
-  - Paginates `/discover/movie` and `/discover/tv` (up to 500 pages each)
-  - Enriches each item: credits, keywords, genres, runtime, watch providers
-  - Optional OMDb enrichment for IMDb ratings
-  - Builds simple 6-dim feature embedding per item
-  - Writes versioned output to `data/catalog/tmdb-jiohotstar-catalog.json`
-- Created `src/shared/catalog.ts`:
-  - `loadCatalog()`: tries TMDB catalog, falls back to 91mobiles seed
-  - `matchCatalogItem()`: URL-first, then normalized-title matching
-  - `normalizeRating()`, `freshnessScore()`, `daysSinceRelease()`, `buildSimpleEmbedding()`, `cosineSimilarity()`
-- Added `catalog:seed` and `catalog:tmdb` npm scripts
+**P2-01 — IndexedDB (Dexie)**
+- `src/shared/db.ts` created: `CuratorDatabase` with `catalog` and `user_actions` tables.
+- `src/shared/catalog.ts` updated: `syncCatalogToDb()` loads from bundled JSON on first run; `loadCatalog()` delegates to Dexie; `matchCatalogItemAsync()` queries DB directly.
+- `package.json`: `dexie` added as dependency.
+- `scripts/catalog/*.mjs`: output now goes to `public/data/catalog/` so Vite bundles it automatically.
 
-**P1-10: Recommendation V1**
-- Created `src/shared/taste.ts`:
-  - `temporalDecayWeight()`: 1.0 / 0.8 / 0.55 / 0.35 bucket decay
-  - `updateTasteGraph()`: propagates watched/hidden signal to genre/actor/director/language/type edges
-  - `tasteGraphScore()`: weighted average of taste graph edge matches → 0-1
-  - `computeTasteCentroid()`: average embedding of liked items
-- Created `src/shared/recommend.ts`:
-  - `buildHardFilters()`: extracts hidden/watched canonical keys from state
-  - `isHardFiltered()`: checks item against hard filter sets (URL + title keys)
-  - `scoreItem()`: 7-weight formula (embedding 35%, taste 20%, quality 15%, mood 10%, novelty 8%, diversity 7%, freshness 5%) - penalties
-  - `diversityRerank()`: caps same-genre at 30%, same director at 2, same lead actor at 3
-  - `getRecommendations()`: full pipeline — filter → score → sort → diversity rerank → exploration inject
-- Created `src/shared/recommend.test.ts`: 12 test cases
-- Updated `src/shared/storage.ts`: added `getTasteGraph()`, `setTasteGraph()`, `subscribeToTasteGraph()`
-- Updated `src/app/App.tsx`:
-  - Two tabs: Manage + Recommendations
-  - Recommendations tab: exploration mode switcher (Comfort/Balanced/Surprise), mood text filter, 20 results with score bars, collapsible debug breakdown, JioHotstar links
-  - Manage tab: updated backup format (v2, includes tasteGraph), remove item updates taste graph
-- Extended `src/shared/types.ts` with: `CatalogItem`, `CatalogManifest`, `TasteGraph`, `TasteEdge`, `TasteNodeType`, `ExplorationMode`, `ScoreBreakdown`, `RecommendationResult`, `RecommendationOptions`
-- Version bumped to 0.2.0
+**P2-02 / P2-03 — Background worker**
+- `src/extension/background.ts` now handles two message types:
+  - `UPDATE_TASTE_GRAPH`: matches catalog item by title/URL, recalculates taste graph.
+  - `FETCH_CARD_META`: returns rating + genres for a card title/URL (used for content script badges).
+- Daily alarm registered (`catalog-check`) for future remote catalog health check.
 
-**Git**
-- Initialized git repository
-- Pushed to `github.com/kunal-gh/thatone`
+**P2-04 — Undo toast**
+- 5-second auto-dismiss toast appears after any Hide / Watched / Watch Later action on a card.
+- "Undo" button restores original state + card visibility.
 
-### Decisions
+**P2-05 — Watch Later**
+- `ItemState` extended to `"hidden" | "watched" | "watch_later"`.
+- Content script: added "Later" button on each card.
+- Storage: `getWatchLaterItems()` helper added.
+- App: new Watch Later tab with "Mark watched" and "Remove" actions.
 
-- Simple 6-dim embedding for cold-start — can be replaced with TMDB/text embeddings later.
-- Taste graph updates only from the app for now; content script integration is next.
-- Catalog loadCatalog() prefers TMDB output, silently falls back to seed.
+**P2-06 — Swipe Deck**
+- New Swipe tab in discovery app.
+- Full-card view with TMDB poster image (or gradient fallback).
+- Emoji action buttons: 👎 hide · ⏭ skip · 🕐 watch later · ✅ watched.
+- Animated feedback overlay on action.
+- Deck is seeded from recommendations for smart cold-start.
 
-### Files added this session
+**P2-07 — Taste Controls**
+- New Taste tab visualizes all taste graph edges grouped by node type (genre, actor, director, language, etc.).
+- Signed weight bars (positive = green, negative = red).
+- Shows taste centroid vector if computed.
 
-- `src/extension/fixtures/homepage-rail.html`
-- `src/extension/fixtures/search-results.html`
-- `src/extension/fixtures/detail-page-rail.html`
-- `src/shared/catalog.ts`
-- `src/shared/taste.ts`
-- `src/shared/recommend.ts`
-- `src/shared/recommend.test.ts`
-- `scripts/catalog/build-tmdb-catalog.mjs`
+**P2-08 — Catalog Health**
+- New Catalog tab shows: total/movie/show counts, high confidence, JioHotstar URL coverage, embedding coverage, action log count.
+- Last 10 user actions displayed.
+- Force re-sync button clears Dexie catalog and reloads from bundle.
 
-### Open issues
+**P2-09 — User Action Log**
+- `src/shared/types.ts`: `UserAction`, `UserActionType`, `ActionContext` types added.
+- `src/shared/db.ts`: `user_actions` table added to Dexie.
+- `src/shared/storage.ts`: `logUserAction()`, `getRecentActions()`, `getActionCount()` added.
+- All Hide/Watched/Watch Later/Remove actions across app and content script now logged.
 
-- Taste graph is not yet updated from the content script (only from the app).
-- Catalog is still the 23-item 91mobiles seed until `catalog:tmdb` is run with a token.
-- IndexedDB not yet integrated — still using chrome.storage.local for all state.
-- Two-tower model, LangGraph, hosted sync all deferred.
+**P2-10 — Manifest v0.3.0**
+- Added: `alarms`, `sidePanel` permissions.
+- Added: `side_panel.default_path = "app.html"`.
+- Added: `data/catalog/*` to `web_accessible_resources`.
+
+**P2-11 — GitHub Actions**
+- `.github/workflows/catalog-refresh.yml`: weekly (Sunday 02:00 UTC) catalog rebuild.
+- Uses `TMDB_BEARER_TOKEN` from GitHub Secrets.
+- Auto-commits updated JSON with `[skip ci]` tag.
+
+**Popup**
+- Now shows 4 stats: hidden, watched, watch later, taste signals.
+- Added "Open side panel" button.
+
+### Test Results
+
+```
+35/35 tests passing
+npm run build ✓ (clean)
+```
+
+### Version
+
+0.2.0 → 0.3.0
 
 ---
 
-## 2026-06-24 — Session 1: project bootstrap
+## Session 2 — 2026-06-24 (Phase 2 Complete)
 
-### Summary
+### Tasks Completed
 
-- Reviewed all planning documents and produced a corrected architecture blueprint.
-- Established project-memory files for recovery across MCP sessions.
-- Chose extension-first architecture with an extension-owned discovery app.
-- Started implementation with a buildable MV3 scaffold.
-- Added direct on-page `Hide` and `Watched` controls.
-- Added import/export backup support for extension state.
-- Refactored DOM extraction into a dedicated adapter module.
-- Added baseline adapter tests with Vitest and jsdom.
-- Added a first working catalog seed builder with curl fallback for 91mobiles anti-bot behavior.
-- Generated `data/catalog/91mobiles-jiohotstar-seed.json` with 23 visible-page items.
-- Verified a successful production build in `dist/`.
+- P1-07: Adapter hardening (17 tests, 6 extraction fallbacks, 3 HTML fixtures)
+- P1-09: TMDB catalog pipeline (`build-tmdb-catalog.mjs`, `catalog.ts`)
+- P1-10: Recommendation V1 (7-weight scoring, diversity rerank, exploration modes)
+- Docs synchronized
+- Git initialized, pushed to `kunal-gh/thatone`
 
-### Decisions
+---
 
-- Use local-first storage first; no backend dependency in MVP.
-- Keep the hosted PWA as a later phase.
-- Treat TMDB as primary catalog source and 91mobiles as validation.
-- Keep LLM features out of the hot recommendation path.
+## Session 1 — 2026-06-24 (Phase 1 Complete)
+
+### Tasks Completed
+
+- P0-01 through P1-11: Full MVP scaffold, extension core, storage, adapter, popup, app, tests

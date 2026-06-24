@@ -1,109 +1,113 @@
 # Handoff
 
-Last updated: 2026-06-24 (Session 2)
+Last updated: 2026-06-24 (Session 3)
 
 ## What This Project Is
 
 A local-first Chrome extension called "Personal JioHotstar Curator". The extension:
 1. Hides unwanted JioHotstar titles permanently across refreshes
 2. Tracks watched content
-3. Builds a personal taste graph from user actions
-4. Recommends unseen, unblocked titles using deterministic scoring
+3. Saves Watch Later items
+4. Builds a personal taste graph from user actions (Hide/Watched/Watch Later/Swipe)
+5. Recommends unseen, unblocked titles using deterministic scoring
+6. Provides a full 6-tab discovery app and a side panel
 
-## What Has Been Built
+## What Has Been Built (Complete as of Session 3)
 
-### Extension (complete MVP)
-- MV3 scaffold: popup, app page, background service worker, content script
-- Content script: detects cards across homepage/search/detail rails, injects Hide/Watched buttons, hides stored items, watches for dynamic content via MutationObserver
-- DOM adapter: layered extraction (aria → data-title → title → img alt → inner aria → textContent → nearby heading), broad card wrapper resolution
-- Background service worker (stub, ready for catalog sync and alarm-based updates)
+### Extension Surfaces
+- **Popup**: 4 stats (hidden, watched, watch later, taste signals) + open app + open side panel buttons
+- **Content script**: Detects cards, injects Hide / Watched / Watch Later buttons + rating badge + undo toast
+- **Background worker**: `UPDATE_TASTE_GRAPH` and `FETCH_CARD_META` message handlers, daily alarm
+- **Side panel**: Full 6-tab app served from `app.html`
+
+### 6-Tab Discovery App (`app.html`)
+| Tab | What it does |
+| --- | --- |
+| ⚙️ Manage | Lists hidden/watched items, filter, remove, export/import backup |
+| 🕐 Watch Later | Saved items with Open / Mark Watched / Remove actions |
+| 🃏 Swipe | Full-card deck with TMDB poster, emoji actions, animated feedback |
+| ⭐ Recommendations | 7-weight scored recs with mood/type/exploration filters + score debug bars |
+| 🎭 Taste | Signed weight visualization per node type + centroid vector |
+| 📊 Catalog | DB stats, last 10 actions, force re-sync |
 
 ### Storage
-- `chrome.storage.local` with two keys: `curatorState` (hidden/watched items) and `curatorTaste` (taste graph)
-- Full CRUD: `getStoredState`, `setStoredState`, `upsertStoredItem`, `removeStoredItem`, `subscribeToStoredState`
-- Taste graph: `getTasteGraph`, `setTasteGraph`, `subscribeToTasteGraph`
+- **chrome.storage.local**: `curatorState` (items), `curatorTaste` (taste graph), settings
+- **IndexedDB (Dexie)**: `catalog` table (thousands of TMDB items), `user_actions` log table
 
-### Catalog pipeline
-- `scripts/catalog/build-catalog.mjs`: 91mobiles seed builder (23 items generated)
-- `scripts/catalog/build-tmdb-catalog.mjs`: TMDB-first full catalog builder (requires `TMDB_BEARER_TOKEN`)
-- `src/shared/catalog.ts`: `loadCatalog()`, `matchCatalogItem()`, embedding + similarity helpers
+### Catalog Pipeline
+- `scripts/catalog/build-tmdb-catalog.mjs`: TMDB-first, auto-discovers JioHotstar provider IDs, paginates, enriches, outputs to `public/data/catalog/`
+- `scripts/catalog/build-catalog.mjs`: 91mobiles seed builder
+- `src/shared/catalog.ts`: `syncCatalogToDb()`, `loadCatalog()`, `matchCatalogItem()`, `matchCatalogItemAsync()`
 
-### Recommendation V1
-- `src/shared/taste.ts`: taste graph, temporal decay, taste graph scoring, taste centroid
-- `src/shared/recommend.ts`: hard filters, 7-weight scoring, diversity rerank, exploration injection, `getRecommendations()` entry point
-- `src/app/App.tsx`: Manage tab + Recommendations tab (exploration mode, mood filter, score debug)
+### Recommendation Engine
+- `src/shared/taste.ts`: taste graph, temporal decay, scoring, centroid
+- `src/shared/recommend.ts`: hard filters, 7-weight formula, diversity rerank, exploration injection
+- Score formula: `0.35*embedding + 0.20*taste + 0.15*quality + 0.10*mood + 0.08*novelty + 0.07*diversity + 0.05*freshness - penalties`
+
+### CI/Automation
+- `.github/workflows/catalog-refresh.yml`: weekly TMDB pull, auto-commit
+- Requires `TMDB_BEARER_TOKEN` secret in GitHub repo settings
 
 ### Tests
-- `src/extension/adapter.test.ts`: 10+ tests covering URL pattern, title extraction priorities, homepage rail, search grid, detail page, nav rejection, canonical key types
-- `src/shared/recommend.test.ts`: 12 tests covering hard filters, diversity rerank, temporal decay, getRecommendations full pipeline
+- 35 tests passing (`npm test`)
+- Adapter: 17 tests (URL patterns, title extraction, fixtures)
+- Recommend: 18 tests (hard filters, scoring, diversity, pipeline)
 
-## What Has Not Been Built Yet
-
-- Taste graph update from the content script (currently only from the app)
-- IndexedDB integration (Dexie) — needed for large catalog storage
-- Watch later feature
-- End-to-end extension loading test
-- Natural language search / LLM explain (Phase 6 in blueprint)
-- Multi-platform adapters (Netflix, Prime, etc.)
-
-## Current Technical Shape
+## File Map
 
 ```
 src/
   shared/
-    types.ts         ← all types including CatalogItem, TasteGraph, RecommendationResult
-    normalize.ts     ← title/URL normalization, canonical keys
-    storage.ts       ← chrome.storage.local CRUD + taste graph helpers
-    catalog.ts       ← catalog loading, matching, embedding helpers
+    types.ts         ← ItemState (hidden|watched|watch_later), UserAction, CatalogItem, TasteGraph
+    normalize.ts     ← title/URL normalization
+    storage.ts       ← chrome.storage CRUD + logUserAction + getRecentActions
+    db.ts            ← Dexie: catalog + user_actions tables
+    catalog.ts       ← syncCatalogToDb, loadCatalog, matchCatalogItem(Async)
     taste.ts         ← taste graph, temporal decay, scoring, centroid
     recommend.ts     ← full recommendation pipeline
     recommend.test.ts
   extension/
     adapter.ts       ← DOM extraction (testable, no chrome deps)
     adapter.test.ts
-    content.ts       ← content script: detect, hide, inject buttons
-    background.ts    ← service worker stub
+    content.ts       ← cards: Hide/Watched/Later buttons + toast + badge + undo
+    background.ts    ← UPDATE_TASTE_GRAPH + FETCH_CARD_META + alarm
     fixtures/        ← HTML fixtures for adapter tests
   app/
-    App.tsx          ← management app: Manage + Recommendations tabs
+    App.tsx          ← 6-tab app
     main.tsx
   popup/
-    App.tsx          ← popup: counts + open app button
+    App.tsx          ← popup: 4 stats + open app + side panel
     main.tsx
   styles/
     base.css
 
 scripts/catalog/
-  build-catalog.mjs        ← 91mobiles seed builder
-  build-tmdb-catalog.mjs   ← TMDB-first full catalog builder
-
-data/catalog/
-  91mobiles-jiohotstar-seed.json   ← 23 items (generated)
-  tmdb-jiohotstar-catalog.json     ← generated by catalog:tmdb (needs token)
+  build-catalog.mjs        ← 91mobiles seed
+  build-tmdb-catalog.mjs   ← TMDB full catalog
 
 public/
-  manifest.json    ← Chrome MV3 manifest
+  manifest.json    ← v0.3.0 with sidePanel + alarms
+  data/catalog/    ← generated JSON lands here, bundled by Vite
 
-Docs/
-  revised_architecture_blueprint.md   ← master architecture (801 lines)
-  HANDOFF.md / PROJECT_BRIEF.md / BUILD_AND_LOAD.md / CATALOG_PIPELINE.md
-tasks/TASKS.md
-logs/DEV_LOG.md
+.github/workflows/
+  catalog-refresh.yml      ← weekly CI catalog rebuild
+
+tasks/TASKS.md · logs/DEV_LOG.md · Docs/HANDOFF.md
 ```
 
 ## How To Continue
 
-1. Read `tasks/TASKS.md` for current priorities.
-2. Read `logs/DEV_LOG.md` for chronological context.
-3. Run `npm test` — all tests should pass.
-4. Run `npm run build` — full production build.
-5. Add `TMDB_BEARER_TOKEN` to `.env` and run `npm run catalog:tmdb` to build the full catalog.
-6. Next task: integrate taste graph update into the content script (call `updateTasteGraph` + `setTasteGraph` from `persistCardState`).
+1. **Set GitHub secret**: Add `TMDB_BEARER_TOKEN` in repo Settings → Secrets → Actions.
+2. **Test extension**: `npm run build` → load `dist/` as unpacked extension in Chrome.
+3. **Next milestone (Phase 4)**: Add a logistic regression classifier using the `user_actions` log as training data.
+4. **Phase 5**: Hosted PWA with `externally_connectable` bridge.
+5. **Phase 6**: Natural language search / LLM explanations.
 
-## Assumptions
+## Assumptions & Constraints
 
-- Chrome extension is the primary surface.
-- Local-first storage is the default; no backend until sync is needed.
-- Adapter uses layered heuristics; avoids any single CSS class dependency.
-- Hard filters always execute before any scoring.
-- LLM/AI is deferred to Phase 6.
+- Local-first; no backend until sync is needed.
+- Adapter uses layered heuristics; avoids single CSS class dependency.
+- Hard filters always execute before scoring.
+- LLM/AI deferred to Phase 6.
+- `chrome.storage.sync` is not used for catalog (too small).
+- Rating badges are best-effort; gracefully hidden if catalog item not found.

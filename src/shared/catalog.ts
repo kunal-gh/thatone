@@ -1,44 +1,47 @@
 import type { CatalogItem, CatalogManifest } from "./types";
 import { normalizeTitle } from "./normalize";
 
-// ─── Catalog loading ──────────────────────────────────────────────────────────
+import { db } from "./db";
 
-const CATALOG_URLS = [
-  // Primary: TMDB-sourced catalog (produced by build-tmdb-catalog.mjs)
-  "/data/catalog/tmdb-jiohotstar-catalog.json",
-  // Fallback: 91mobiles seed
-  "/data/catalog/91mobiles-jiohotstar-seed.json"
-];
+// ─── Catalog syncing & loading ───────────────────────────────────────────────
 
-let _cachedCatalog: CatalogItem[] | null = null;
+const CATALOG_URL = typeof chrome !== "undefined" && chrome.runtime?.getURL
+  ? chrome.runtime.getURL("/data/catalog/tmdb-jiohotstar-catalog.json")
+  : "/data/catalog/tmdb-jiohotstar-catalog.json";
+
+const SEED_URL = typeof chrome !== "undefined" && chrome.runtime?.getURL
+  ? chrome.runtime.getURL("/data/catalog/91mobiles-jiohotstar-seed.json")
+  : "/data/catalog/91mobiles-jiohotstar-seed.json";
+
+export async function syncCatalogToDb(): Promise<void> {
+  // Only sync if DB is empty for now (Phase 2 optimization)
+  const count = await db.catalog.count();
+  if (count > 0) return;
+
+  try {
+    let response = await fetch(CATALOG_URL);
+    if (!response.ok) {
+      response = await fetch(SEED_URL);
+      if (!response.ok) return;
+    }
+
+    const manifest = (await response.json()) as CatalogManifest;
+    if (Array.isArray(manifest.items) && manifest.items.length > 0) {
+      await db.catalog.bulkPut(manifest.items);
+      console.log(`Synced ${manifest.items.length} items to Dexie catalog.`);
+    }
+  } catch (err) {
+    console.warn("Failed to sync catalog to DB", err);
+  }
+}
 
 export async function loadCatalog(): Promise<CatalogItem[]> {
-  if (_cachedCatalog !== null) {
-    return _cachedCatalog;
-  }
-
-  for (const url of CATALOG_URLS) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) continue;
-
-      const manifest = (await response.json()) as CatalogManifest;
-
-      if (Array.isArray(manifest.items) && manifest.items.length > 0) {
-        _cachedCatalog = manifest.items;
-        return _cachedCatalog;
-      }
-    } catch {
-      // Try next URL
-    }
-  }
-
-  _cachedCatalog = [];
-  return _cachedCatalog;
+  await syncCatalogToDb();
+  return db.catalog.toArray();
 }
 
 export function clearCatalogCache(): void {
-  _cachedCatalog = null;
+  // No-op for now, but could clear DB if needed
 }
 
 // ─── Catalog lookup ───────────────────────────────────────────────────────────
@@ -86,6 +89,39 @@ export function matchCatalogItem(
     (item) =>
       item.original_title && normalizeTitle(item.original_title) === normalizedInput
   );
+
+  return byOriginal ?? null;
+}
+
+export async function matchCatalogItemAsync(
+  title: string,
+  url?: string
+): Promise<CatalogItem | null> {
+  await syncCatalogToDb();
+  
+  if (url) {
+    const urlKey = urlToLookupKey(url);
+    // Linear scan of URLs is required if we just index jiohotstar_url because we need urlToLookupKey
+    // But since dexie is fast, we can use a filter
+    const byUrl = await db.catalog.filter((item) => {
+      if (!item.jiohotstar_url) return false;
+      return urlToLookupKey(item.jiohotstar_url) === urlKey;
+    }).first();
+    if (byUrl) return byUrl;
+  }
+
+  const normalizedInput = normalizeTitle(title);
+  
+  // Normalized title match
+  const byTitle = await db.catalog.filter(
+    (item) => normalizeTitle(item.title) === normalizedInput
+  ).first();
+  if (byTitle) return byTitle;
+
+  // Partial title match fallback
+  const byOriginal = await db.catalog.filter(
+    (item) => item.original_title ? normalizeTitle(item.original_title) === normalizedInput : false
+  ).first();
 
   return byOriginal ?? null;
 }

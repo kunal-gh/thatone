@@ -168,7 +168,7 @@ async function main() {
     parsed.push(await enrichWithTmdb(seedItem));
   }
 
-  const outputDir = resolve(process.cwd(), "data", "catalog");
+  const outputDir = resolve(process.cwd(), "public", "data", "catalog");
   await mkdir(outputDir, { recursive: true });
 
   const payload = {

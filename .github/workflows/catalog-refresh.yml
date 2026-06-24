@@ -1,0 +1,65 @@
+name: Catalog Refresh
+
+on:
+  schedule:
+    # Run every Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Force full catalog rebuild"
+        required: false
+        default: "false"
+
+jobs:
+  build-catalog:
+    name: Fetch & Publish Catalog
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TMDB catalog
+        env:
+          TMDB_BEARER_TOKEN: ${{ secrets.TMDB_BEARER_TOKEN }}
+        run: npm run catalog:tmdb
+
+      - name: Check catalog output
+        id: check
+        run: |
+          if [ -f "public/data/catalog/tmdb-jiohotstar-catalog.json" ]; then
+            ITEM_COUNT=$(node -e "const f=require('./public/data/catalog/tmdb-jiohotstar-catalog.json'); console.log(f.item_count)")
+            echo "item_count=$ITEM_COUNT" >> $GITHUB_OUTPUT
+            echo "Catalog built successfully: $ITEM_COUNT items"
+          else
+            echo "ERROR: Catalog file not found"
+            exit 1
+          fi
+
+      - name: Commit updated catalog
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(catalog): auto-refresh catalog [${{ steps.check.outputs.item_count }} items] [skip ci]"
+          file_pattern: "public/data/catalog/*.json"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+
+      - name: Summary
+        run: |
+          echo "### Catalog Refresh Complete ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Items fetched:** ${{ steps.check.outputs.item_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Catalog file:** \`public/data/catalog/tmdb-jiohotstar-catalog.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY

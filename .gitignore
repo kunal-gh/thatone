@@ -3,3 +3,12 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Secrets — never commit
+.env
+*.env.local
+
+# Build artifacts
+tsconfig.tsbuildinfo
+tsconfig.node.tsbuildinfo
+vite.config.js
+vite.config.d.ts

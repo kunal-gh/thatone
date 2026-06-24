@@ -1,6 +1,6 @@
 // ─── Extension state types ────────────────────────────────────────────────────
 
-export type ItemState = "hidden" | "watched";
+export type ItemState = "hidden" | "watched" | "watch_later";
 
 export type StoredItem = {
   canonicalKey: string;
@@ -12,6 +12,31 @@ export type StoredItem = {
 
 export type StoredState = {
   items: Record<string, StoredItem>;
+};
+
+// ─── User action log types ────────────────────────────────────────────────────
+
+export type UserActionType =
+  | "hide"
+  | "watched"
+  | "watch_later"
+  | "unhide"
+  | "unwatched"
+  | "remove_watch_later"
+  | "like"
+  | "dislike"
+  | "skipped";
+
+export type ActionContext = "homepage" | "search" | "detail" | "swipe_deck" | "manage_app" | "recommendations";
+
+export type UserAction = {
+  action_id: string;
+  content_id: string | null;
+  title: string;
+  source_url: string | null;
+  action_type: UserActionType;
+  context: ActionContext;
+  created_at: string;
 };
 
 export type CandidateCard = {
