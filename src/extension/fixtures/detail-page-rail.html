@@ -1,0 +1,47 @@
+<!-- Detail page "More like this" rail fixture for adapter tests -->
+<!doctype html>
+<html lang="en">
+  <body>
+    <!-- Detail page hero (should not produce a duplicate card) -->
+    <section class="hero-section">
+      <h1>Kahaani</h1>
+      <a href="/in/movies/kahaani/126001/watch" class="primary-cta" aria-label="Watch Kahaani">
+        Watch Now
+      </a>
+    </section>
+
+    <!-- "More like this" recommendations rail -->
+    <section aria-label="More like this">
+      <h2>More like this</h2>
+
+      <!-- Multiple anchors inside same article: should produce only 1 card -->
+      <article data-content-id="mirzapur-s2">
+        <a href="/in/shows/mirzapur/season2">
+          <img alt="Mirzapur Season 2" src="poster1.jpg" />
+        </a>
+        <a href="/in/shows/mirzapur/season2/watch" class="watch-link">Watch</a>
+      </article>
+
+      <article data-content-id="criminal-justice">
+        <a href="/in/shows/criminal-justice/456" aria-label="Criminal Justice: Behind Closed Doors">
+          <img src="poster2.jpg" />
+        </a>
+      </article>
+
+      <article data-content-id="panchayat">
+        <a href="/in/originals/panchayat/season3">
+          <img alt="Panchayat" src="poster3.jpg" />
+        </a>
+        <div class="card-meta">
+          <span class="card-title">Panchayat Season 3</span>
+          <span class="rating">U/A</span>
+        </div>
+      </article>
+
+      <!-- Should be ignored: not a content URL -->
+      <div class="see-all">
+        <a href="/in/genre/crime-thriller">See all Crime Thrillers</a>
+      </div>
+    </section>
+  </body>
+</html>

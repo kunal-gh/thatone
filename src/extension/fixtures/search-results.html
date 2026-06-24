@@ -1,0 +1,49 @@
+<!-- Search results page fixture for adapter tests -->
+<!doctype html>
+<html lang="en">
+  <body>
+    <!-- JioHotstar search results grid -->
+    <div id="searchResults" role="main">
+      <h2>Search results for "thriller"</h2>
+
+      <ul class="results-grid">
+
+        <!-- Card style 1: li item, aria-label carries full title + year -->
+        <li>
+          <a href="/in/movies/kahaani/126001" aria-label="Kahaani 2012">
+            <img src="poster1.jpg" />
+            <div class="meta">2012 · U/A · Thriller</div>
+          </a>
+        </li>
+
+        <!-- Card style 2: li item, title from img alt -->
+        <li>
+          <a href="/in/movies/andhadhun/123456">
+            <img alt="Andhadhun" src="poster2.jpg" />
+            <div class="meta">2018 · A · Thriller</div>
+          </a>
+        </li>
+
+        <!-- Card style 3: li item, data-title on anchor -->
+        <li>
+          <a href="/in/shows/mirzapur/season2" data-title="Mirzapur Season 2">
+            <img src="poster3.jpg" />
+          </a>
+        </li>
+
+        <!-- Card style 4: li item, title attr on anchor -->
+        <li>
+          <a href="/in/movies/talaash/789" title="Talaash: The Answer Lies Within">
+            <img src="poster4.jpg" />
+          </a>
+        </li>
+
+        <!-- Should be ignored: no content URL -->
+        <li>
+          <a href="/in/plans">See all plans</a>
+        </li>
+
+      </ul>
+    </div>
+  </body>
+</html>

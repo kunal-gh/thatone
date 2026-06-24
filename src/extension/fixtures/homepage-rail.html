@@ -1,0 +1,43 @@
+<!-- Homepage carousel rail fixture for adapter tests -->
+<!doctype html>
+<html lang="en">
+  <body>
+    <!-- Typical JioHotstar homepage "Trending Now" rail -->
+    <section aria-label="Trending Now">
+      <div class="rail-container">
+
+        <!-- Card style 1: data-card wrapper with aria-label anchor -->
+        <div data-card="true" class="content-card">
+          <a href="/in/movies/dhurandhar-the-revenge/1271641088" aria-label="Dhurandhar: The Revenge">
+            <img src="https://img1.hotstarext.com/image/upload/poster1.jpg" loading="lazy" />
+          </a>
+        </div>
+
+        <!-- Card style 2: article wrapper, img alt as title source -->
+        <article class="content-card">
+          <a href="/in/movies/vaazha/1272000">
+            <img alt="Vaazha II: Biopic of a Billion Bros" src="poster2.jpg" />
+            <div class="overlay">Drama · Comedy</div>
+          </a>
+        </article>
+
+        <!-- Card style 3: li wrapper, title extracted from heading span -->
+        <li class="content-card" role="listitem">
+          <a href="/in/originals/panchayat/season3">
+            <img src="poster3.jpg" />
+            <span class="title-text">Panchayat Season 3</span>
+          </a>
+        </li>
+
+        <!-- Should be ignored: no content URL -->
+        <div class="promo-card">
+          <a href="/in/subscribe">Subscribe Now</a>
+        </div>
+
+        <!-- Should be ignored: nav link -->
+        <a href="/in/login">Sign In</a>
+
+      </div>
+    </section>
+  </body>
+</html>
