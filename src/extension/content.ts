@@ -15,11 +15,20 @@ const STYLE_MARKER = "data-curator-style";
 const TOAST_ID = "curator-undo-toast";
 const STATUS_ID = "curator-page-status";
 const BOOTSTRAP_FLAG = "__jioHotstarCuratorBootstrapped";
+const PAGE_PING_TYPE = "CURATOR_PAGE_PING";
 const WARMUP_SCAN_LIMIT = 30;
 const WARMUP_SCAN_INTERVAL_MS = 1500;
 
 let pendingScan = false;
 let lastDetectedCount = 0;
+
+type PagePingResponse = {
+  cards: number;
+  connected: boolean;
+  controls: number;
+  hidden: number;
+  url: string;
+};
 
 function ensureInjectedStyles(): void {
   if (document.getElementById(STYLE_MARKER)) return;
@@ -172,7 +181,17 @@ function updatePageStatus(detectedCount = lastDetectedCount): void {
   status.textContent =
     visibleCount > 0
       ? `CURATOR CONNECTED / ${visibleCount} CARDS / ${controls} CONTROLS / ${hidden} HIDDEN`
-      : "CURATOR CONNECTED / SCANNING JIOHOTSTAR";
+    : "CURATOR CONNECTED / SCANNING JIOHOTSTAR";
+}
+
+function getPagePingResponse(): PagePingResponse {
+  return {
+    cards: Math.max(lastDetectedCount, document.querySelectorAll(`[${CARD_MARKER}="true"]`).length),
+    connected: Boolean(document.getElementById(STATUS_ID)),
+    controls: document.querySelectorAll(`[${ACTIONS_MARKER}="true"]`).length,
+    hidden: document.querySelectorAll(`[${HIDDEN_MARKER}="true"]`).length,
+    url: window.location.href
+  };
 }
 
 function shouldHide(card: CandidateCard, state: StoredState): boolean {
@@ -451,6 +470,15 @@ function watchSinglePageNavigation(): void {
   });
 }
 
+function listenForPagePing(): void {
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type !== PAGE_PING_TYPE) return;
+
+    sendResponse(getPagePingResponse());
+    return false;
+  });
+}
+
 async function bootstrap(): Promise<void> {
   const windowState = window as unknown as Record<string, boolean>;
   if (windowState[BOOTSTRAP_FLAG]) return;
@@ -458,6 +486,7 @@ async function bootstrap(): Promise<void> {
 
   ensureInjectedStyles();
   ensurePageStatus();
+  listenForPagePing();
   await processDocument(document);
   startObserver();
   startWarmupScans();

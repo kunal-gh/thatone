@@ -59,6 +59,7 @@ Phase 5: Live connectivity repair and localhost verification - DONE.
 | P3-14 | DONE | Add stronger live-card adapter fallback | Poster image cards and click-handler layouts are detected even when content links are missing |
 | P3-15 | DONE | Add full-app launch from side panel | App header now exposes `OPEN FULL APP` and `OPEN JIOHOTSTAR` actions |
 | P3-16 | DONE | Improve startup health honesty | Database health starts as `loading` until catalog sync completes |
+| P3-17 | DONE | Add explicit active-tab bridge probe | Side panel now pings the content script and shows connected/disconnected state |
 
 ## Verification Snapshot
 

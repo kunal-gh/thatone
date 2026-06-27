@@ -50,6 +50,12 @@ type AppHealth = {
   lastRefreshLabel: string;
 };
 
+type PageBridgeState = {
+  activeTabLabel: string;
+  status: "connected" | "disconnected" | "not-applicable" | "loading";
+  details: string;
+};
+
 function sortByUpdatedAt(items: StoredItem[]): StoredItem[] {
   return [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -116,12 +122,14 @@ function HealthStrip({
   actionCount,
   catalogCount,
   dbStatus,
+  pageBridge,
   runtime,
   storageProvider
 }: {
   actionCount: number;
   catalogCount: number;
   dbStatus: AppHealth["dbStatus"];
+  pageBridge: PageBridgeState;
   runtime: string;
   storageProvider: string;
 }) {
@@ -130,6 +138,8 @@ function HealthStrip({
     { label: "Storage", value: storageProvider },
     { label: "Catalog", value: `${catalogCount.toLocaleString()} titles` },
     { label: "Database", value: dbStatus },
+    { label: "Page Bridge", value: `${pageBridge.status} / ${pageBridge.details}` },
+    { label: "Active Tab", value: pageBridge.activeTabLabel },
     { label: "Action Log", value: actionCount.toLocaleString() },
     { label: "Backend", value: "Not required" }
   ];
@@ -771,9 +781,84 @@ export function App() {
   const [recentActions, setRecentActions] = useState<UserAction[]>([]);
   const [state, setState] = useState<StoredState>({ items: {} });
   const [tasteGraph, setLocalTasteGraph] = useState<TasteGraph>(emptyTasteGraph());
+  const [pageBridge, setPageBridge] = useState<PageBridgeState>({
+    activeTabLabel: "none",
+    status: "loading",
+    details: "loading"
+  });
 
   const runtime = getRuntimeMode();
   const storageProvider = getStorageProvider();
+
+  const refreshPageBridge = useCallback(async () => {
+    if (runtime !== "extension" || typeof chrome === "undefined" || !chrome.tabs?.query || !chrome.tabs?.sendMessage) {
+      setPageBridge({
+        activeTabLabel: "web runtime",
+        status: "not-applicable",
+        details: "not-applicable"
+      });
+      return;
+    }
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tabLabel = tab?.url ? new URL(tab.url).host : "no active tab";
+      const tabId = tab?.id;
+
+      if (typeof tabId !== "number") {
+        setPageBridge({
+          activeTabLabel: tabLabel,
+          status: "disconnected",
+          details: "no active tab"
+        });
+        return;
+      }
+
+      const response = await new Promise<{
+        cards: number;
+        connected: boolean;
+        controls: number;
+        hidden: number;
+        url: string;
+      } | null>((resolve) => {
+        chrome.tabs.sendMessage(tabId, { type: "CURATOR_PAGE_PING" }, (value: unknown) => {
+          if (chrome.runtime.lastError) {
+            resolve(null);
+            return;
+          }
+
+          resolve((value as {
+            cards: number;
+            connected: boolean;
+            controls: number;
+            hidden: number;
+            url: string;
+          }) ?? null);
+        });
+      });
+
+      if (!response) {
+        setPageBridge({
+          activeTabLabel: tabLabel,
+          status: "disconnected",
+          details: "no content script"
+        });
+        return;
+      }
+
+      setPageBridge({
+        activeTabLabel: tabLabel,
+        status: response.connected ? "connected" : "disconnected",
+        details: `${response.cards} cards / ${response.controls} controls`
+      });
+    } catch {
+      setPageBridge({
+        activeTabLabel: "unknown",
+        status: "disconnected",
+        details: "bridge error"
+      });
+    }
+  }, [runtime]);
 
   const openFullApp = useCallback(() => {
     const url = getAppUrl();
@@ -827,14 +912,20 @@ export function App() {
       }
     );
 
+    void refreshPageBridge();
+    const bridgeTimer = window.setInterval(() => {
+      void refreshPageBridge();
+    }, 4000);
+
     const unsubscribeState = subscribeToStoredState(setState);
     const unsubscribeTaste = subscribeToTasteGraph(setLocalTasteGraph);
 
     return () => {
+      window.clearInterval(bridgeTimer);
       unsubscribeState();
       unsubscribeTaste();
     };
-  }, [refreshSupportData]);
+  }, [refreshPageBridge, refreshSupportData]);
 
   const uniqueItems = useMemo(() => getUniqueStoredItems(state), [state]);
   const hiddenCount = uniqueItems.filter((item) => item.state === "hidden").length;
@@ -940,6 +1031,7 @@ export function App() {
             actionCount={health.actionCount}
             catalogCount={health.catalogCount}
             dbStatus={health.dbStatus}
+            pageBridge={pageBridge}
             runtime={runtime}
             storageProvider={storageProvider}
           />

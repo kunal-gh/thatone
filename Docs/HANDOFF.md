@@ -12,6 +12,7 @@ The project is now a local-first JioHotstar curation product with two working su
 The app is intentionally local-first. There is no backend requirement for the current product. The health indicator says `Backend: Not required` because catalog, state, taste graph, and action log all run in the browser.
 
 Session 5 repaired the live usability gap seen on `https://hotstar.com/in/home`: the manifest now explicitly matches bare `hotstar.com` / `jiohotstar.com`, the adapter can detect poster-image cards even when JioHotstar does not expose ideal content links, and the content script shows an on-page `CURATOR CONNECTED` heartbeat with card/control counts.
+It also adds a side-panel bridge probe, so the panel can show whether the active Hotstar tab is actually answering the extension message ping.
 
 ## What Is Built
 
@@ -33,6 +34,7 @@ Session 5 repaired the live usability gap seen on `https://hotstar.com/in/home`:
 - `index.html`: localhost/Vercel full app entry.
 - `src/extension/content.ts`: detects cards, injects Hide/Watched/Later controls, rating badge, undo toast.
 - `src/extension/content.ts`: also shows `CURATOR CONNECTED / {n} CARDS / {n} CONTROLS / {n} HIDDEN` on JioHotstar so connectivity is visible.
+- `src/app/App.tsx`: now pings the active tab and reports `Page Bridge` status in the health strip.
 - `src/extension/background.ts`: handles `SYNC_TASTE_GRAPH`, `FETCH_CARD_META`, and daily catalog alarm.
 
 ### Data and Storage
@@ -113,6 +115,7 @@ If the extension was already loaded before a rebuild, click the reload icon on t
 4. Do not reintroduce extension-only storage assumptions into the app. Web mode must work without `chrome.*` APIs.
 5. Keep the design monochrome/minimal unless the user requests another redesign.
 6. If the side panel works but page controls do not appear on JioHotstar, first verify the active URL is covered by `public/manifest.json` and that the page shows the `CURATOR CONNECTED` heartbeat after extension reload.
+7. If the page heartbeat is missing, use the `Page Bridge` health chip to confirm whether the content script is answering at all.
 
 ## Remaining Work
 

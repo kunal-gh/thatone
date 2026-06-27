@@ -19,6 +19,8 @@ Fix the live usability failure reported from screenshots: the side panel opened 
 - Broadened `src/extension/adapter.ts` to detect poster-image cards and live click-handler layouts, with title cleanup to avoid utility labels.
 - Added `CURATOR CONNECTED / {n} CARDS / {n} CONTROLS / {n} HIDDEN` page heartbeat in `src/extension/content.ts`.
 - Added warmup rescans, SPA URL-change rescans, focus/visibility rescans, and mutation debouncing for JioHotstar's dynamic rails.
+- Added an explicit `CURATOR_PAGE_PING` message path so the extension UI can prove whether the current tab is actually connected.
+- Added `Page Bridge` and `Active Tab` indicators in the main app health strip.
 - Added `OPEN FULL APP` and `OPEN JIOHOTSTAR` actions to the full app header for side-panel escape.
 - Changed startup health to show `loading` until the catalog sync completes.
 - Started Vite on `http://127.0.0.1:4173/` for live testing.
