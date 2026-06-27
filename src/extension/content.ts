@@ -1,11 +1,26 @@
+/**
+ * content.ts — JioHotstar Curator content script
+ *
+ * This file MUST remain dependency-free from npm packages.
+ * It only imports from:
+ *   - ./content-storage  (zero-dep chrome.storage.local wrapper)
+ *   - ./adapter          (zero-dep DOM helpers)
+ *   - ../shared/normalize (pure string functions, no imports)
+ *
+ * It is built as a self-contained IIFE by scripts/build-content.mjs so
+ * Chrome can inject it as a regular script with no ES module machinery.
+ */
+
 import { canonicalKeyFromTitle, canonicalKeyFromUrl } from "../shared/normalize";
 import {
   getStoredState,
   logUserAction,
   removeStoredItem,
   upsertStoredItem
-} from "../shared/storage";
-import type { CandidateCard, ItemState, StoredState } from "../shared/types";
+} from "./content-storage";
+import type { StoredState } from "./content-storage";
+import type { ItemState } from "./content-storage";
+import type { CandidateCard } from "../shared/types";
 import { findCandidateCards } from "./adapter";
 
 const CARD_MARKER = "data-curator-processed";
@@ -30,6 +45,8 @@ type PagePingResponse = {
   url: string;
 };
 
+// ─── Injected Styles ──────────────────────────────────────────────────────────
+
 function ensureInjectedStyles(): void {
   if (document.getElementById(STYLE_MARKER)) return;
 
@@ -47,82 +64,86 @@ function ensureInjectedStyles(): void {
       flex-wrap: wrap;
       max-width: calc(100% - 16px);
       padding: 8px;
-      background: #ffffff;
-      border: 2px solid #000000;
-      border-radius: 4px;
-      box-shadow: 4px 4px 0 #000000;
+      background: rgba(0,0,0,0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     }
 
     [data-curator-button] {
-      border: 2px solid #000000;
-      border-radius: 4px;
-      padding: 6px 10px;
-      background: #ffffff;
-      color: #000000;
-      font: 700 11px/1 Arial, Helvetica, sans-serif;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 5px;
+      padding: 5px 10px;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      font: 700 11px/1 "Inter", Arial, sans-serif;
       cursor: pointer;
       text-transform: uppercase;
+      letter-spacing: 0.03em;
+      transition: background 0.15s;
     }
 
     [data-curator-button]:hover {
-      background: #000000;
-      color: #ffffff;
+      background: rgba(255,255,255,0.25);
     }
+
+    [data-curator-button="hidden"]:hover    { background: rgba(239,68,68,0.5); }
+    [data-curator-button="watched"]:hover   { background: rgba(16,185,129,0.5); }
+    [data-curator-button="watch_later"]:hover { background: rgba(59,130,246,0.5); }
 
     [data-curator-badge] {
       display: inline-flex;
       align-items: center;
-      padding: 6px 10px;
-      border: 2px solid #c3c3c3;
-      border-radius: 4px;
-      background: #f3f3f3;
-      color: #1c1c1c;
-      font: 700 11px/1 Arial, Helvetica, sans-serif;
+      padding: 4px 8px;
+      border: 1px solid rgba(251,191,36,0.4);
+      border-radius: 5px;
+      background: rgba(251,191,36,0.1);
+      color: #fbbf24;
+      font: 700 10px/1 "Inter", Arial, sans-serif;
       text-transform: uppercase;
       white-space: nowrap;
     }
 
     #${TOAST_ID} {
       position: fixed;
-      bottom: 24px;
+      bottom: 32px;
       left: 50%;
-      transform: translateX(-50%);
-      z-index: 99999;
+      transform: translateX(-50%) translateY(12px);
+      z-index: 2147483647;
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 12px 16px;
-      background: #000000;
-      border: 2px solid #ffffff;
-      border-radius: 4px;
-      color: #ffffff;
-      font: 700 12px/1 Arial, Helvetica, sans-serif;
-      text-transform: uppercase;
-      box-shadow: 4px 4px 0 #1c1c1c;
+      padding: 12px 18px;
+      background: rgba(10,10,20,0.92);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      color: #fff;
+      font: 500 13px/1 "Inter", Arial, sans-serif;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
       opacity: 0;
       pointer-events: none;
-      transition: opacity 160ms ease;
+      transition: opacity 0.2s, transform 0.2s;
     }
 
     #${TOAST_ID}.show {
       opacity: 1;
+      transform: translateX(-50%) translateY(0);
       pointer-events: auto;
     }
 
     #${TOAST_ID} button {
-      border: 2px solid #ffffff;
-      border-radius: 4px;
-      background: #000000;
-      color: #ffffff;
-      padding: 6px 10px;
-      font: 700 11px/1 Arial, Helvetica, sans-serif;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 5px;
+      background: transparent;
+      color: #fff;
+      padding: 5px 10px;
+      font: 700 11px/1 "Inter", Arial, sans-serif;
       cursor: pointer;
-      text-transform: uppercase;
     }
 
     #${TOAST_ID} button:hover {
-      background: #ffffff;
-      color: #000000;
+      background: rgba(255,255,255,0.12);
     }
 
     #${STATUS_ID} {
@@ -132,28 +153,28 @@ function ensureInjectedStyles(): void {
       z-index: 2147483647;
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       max-width: calc(100vw - 32px);
-      padding: 10px 12px;
-      background: #ffffff;
-      border: 2px solid #000000;
-      border-radius: 4px;
-      color: #000000;
-      font: 700 11px/1 Arial, Helvetica, sans-serif;
-      letter-spacing: 0;
-      text-transform: uppercase;
-      box-shadow: 4px 4px 0 #000000;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.82);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      color: #a3e635;
+      font: 700 11px/1 "Inter", Arial, sans-serif;
+      letter-spacing: 0.03em;
+      backdrop-filter: blur(6px);
       pointer-events: none;
     }
 
     #${STATUS_ID}[data-state="scanning"] {
-      background: #f3f3f3;
-      color: #1c1c1c;
+      color: #94a3b8;
     }
   `;
 
   document.head.appendChild(style);
 }
+
+// ─── Page status heartbeat ─────────────────────────────────────────────────────
 
 function ensurePageStatus(): HTMLElement {
   let status = document.getElementById(STATUS_ID);
@@ -161,7 +182,7 @@ function ensurePageStatus(): HTMLElement {
     status = document.createElement("div");
     status.id = STATUS_ID;
     status.setAttribute("data-state", "scanning");
-    status.textContent = "CURATOR CONNECTED / SCANNING JIOHOTSTAR";
+    status.textContent = "CURATOR CONNECTED";
     document.body.appendChild(status);
   }
 
@@ -180,8 +201,8 @@ function updatePageStatus(detectedCount = lastDetectedCount): void {
   status.setAttribute("data-state", visibleCount > 0 ? "ready" : "scanning");
   status.textContent =
     visibleCount > 0
-      ? `CURATOR CONNECTED / ${visibleCount} CARDS / ${controls} CONTROLS / ${hidden} HIDDEN`
-    : "CURATOR CONNECTED / SCANNING JIOHOTSTAR";
+      ? `✓ CURATOR · ${visibleCount} cards · ${controls} controls · ${hidden} hidden`
+      : "✓ CURATOR · scanning…";
 }
 
 function getPagePingResponse(): PagePingResponse {
@@ -193,6 +214,8 @@ function getPagePingResponse(): PagePingResponse {
     url: window.location.href
   };
 }
+
+// ─── Card visibility ───────────────────────────────────────────────────────────
 
 function shouldHide(card: CandidateCard, state: StoredState): boolean {
   const titleKey = canonicalKeyFromTitle(card.title);
@@ -207,6 +230,8 @@ function hideCard(card: CandidateCard): void {
   card.element.setAttribute(HIDDEN_MARKER, "true");
 }
 
+// ─── Action persistence ────────────────────────────────────────────────────────
+
 let lastAction: { card: CandidateCard; previousState: ItemState | null } | null = null;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -214,7 +239,7 @@ function syncTasteGraph(): void {
   try {
     chrome.runtime.sendMessage({ type: "SYNC_TASTE_GRAPH" });
   } catch {
-    // Extension context may not be available in tests or during reloads.
+    // Extension context may not be available.
   }
 }
 
@@ -234,7 +259,7 @@ async function persistCardState(
   }
 
   const actionType = state === "hidden" ? "hide" : state === "watched" ? "watched" : "watch_later";
-  void logUserAction(actionType, card.title, {
+  logUserAction(actionType, card.title, {
     source_url: card.url,
     context: "homepage"
   });
@@ -267,13 +292,15 @@ async function undoLastAction(): Promise<void> {
   card.element.style.display = "";
   card.element.removeAttribute(HIDDEN_MARKER);
 
-  void logUserAction("unhide", card.title, {
+  logUserAction("unhide", card.title, {
     source_url: card.url,
     context: "homepage"
   });
 
   syncTasteGraph();
 }
+
+// ─── Undo toast ────────────────────────────────────────────────────────────────
 
 function dismissToast(): void {
   const toast = document.getElementById(TOAST_ID);
@@ -317,6 +344,8 @@ function showUndoToast(action: ItemState): void {
   toastTimer = setTimeout(dismissToast, 5000);
 }
 
+// ─── Card action injection ─────────────────────────────────────────────────────
+
 function ensureCardIsPositionable(cardElement: HTMLElement): void {
   if (window.getComputedStyle(cardElement).position === "static") {
     cardElement.style.position = "relative";
@@ -347,7 +376,7 @@ async function injectActions(card: CandidateCard): Promise<void> {
 
   const badge = document.createElement("span");
   badge.setAttribute("data-curator-badge", "true");
-  badge.textContent = "Rating ...";
+  badge.textContent = "★…";
   root.appendChild(badge);
 
   void getCatalogRating(card).then((rating) => {
@@ -356,7 +385,7 @@ async function injectActions(card: CandidateCard): Promise<void> {
       return;
     }
 
-    badge.textContent = `Rating ${rating.toFixed(1)}`;
+    badge.textContent = `★ ${rating.toFixed(1)}`;
   });
 
   const currentState = await getStoredState();
@@ -393,6 +422,8 @@ async function injectActions(card: CandidateCard): Promise<void> {
   card.element.appendChild(root);
   updatePageStatus();
 }
+
+// ─── Document processing ───────────────────────────────────────────────────────
 
 async function processDocument(root: ParentNode = document): Promise<void> {
   const state = await getStoredState();
@@ -478,6 +509,8 @@ function listenForPagePing(): void {
     return false;
   });
 }
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 async function bootstrap(): Promise<void> {
   const windowState = window as unknown as Record<string, boolean>;

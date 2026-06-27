@@ -1,5 +1,6 @@
 import { matchCatalogItemAsync } from "../shared/catalog";
 import { syncTasteGraphFromCurrentState } from "../shared/curation";
+import { logUserAction } from "../shared/storage";
 
 type SyncTasteGraphMessage = {
   type: "SYNC_TASTE_GRAPH";
@@ -13,7 +14,16 @@ type FetchCardMetaMessage = {
   };
 };
 
-type CuratorMessage = SyncTasteGraphMessage | FetchCardMetaMessage;
+type LogUserActionMessage = {
+  type: "LOG_USER_ACTION";
+  payload: {
+    actionType: string;
+    title: string;
+    context: Record<string, string | undefined>;
+  };
+};
+
+type CuratorMessage = SyncTasteGraphMessage | FetchCardMetaMessage | LogUserActionMessage;
 
 chrome.runtime.onMessage.addListener(
   (message: CuratorMessage, _sender, sendResponse) => {
@@ -26,6 +36,16 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "FETCH_CARD_META") {
       void handleFetchCardMeta(message.payload, sendResponse);
       return true;
+    }
+
+    if (message.type === "LOG_USER_ACTION") {
+      void logUserAction(
+        message.payload.actionType as Parameters<typeof logUserAction>[0],
+        message.payload.title,
+        message.payload.context
+      );
+      sendResponse({ success: true });
+      return false;
     }
   }
 );
