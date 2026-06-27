@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-06-24 (Session 4)
+Last updated: 2026-06-27 (Session 5)
 
 ## Current State
 
@@ -10,6 +10,8 @@ The project is now a local-first JioHotstar curation product with two working su
 - **Chrome extension mode:** build `dist/` and load it unpacked in Chrome. The extension injects controls into JioHotstar pages and can open the side panel/full app.
 
 The app is intentionally local-first. There is no backend requirement for the current product. The health indicator says `Backend: Not required` because catalog, state, taste graph, and action log all run in the browser.
+
+Session 5 repaired the live usability gap seen on `https://hotstar.com/in/home`: the manifest now explicitly matches bare `hotstar.com` / `jiohotstar.com`, the adapter can detect poster-image cards even when JioHotstar does not expose ideal content links, and the content script shows an on-page `CURATOR CONNECTED` heartbeat with card/control counts.
 
 ## What Is Built
 
@@ -30,6 +32,7 @@ The app is intentionally local-first. There is no backend requirement for the cu
 - `app.html`: extension side panel/full app entry.
 - `index.html`: localhost/Vercel full app entry.
 - `src/extension/content.ts`: detects cards, injects Hide/Watched/Later controls, rating badge, undo toast.
+- `src/extension/content.ts`: also shows `CURATOR CONNECTED / {n} CARDS / {n} CONTROLS / {n} HIDDEN` on JioHotstar so connectivity is visible.
 - `src/extension/background.ts`: handles `SYNC_TASTE_GRAPH`, `FETCH_CARD_META`, and daily catalog alarm.
 
 ### Data and Storage
@@ -87,7 +90,7 @@ npm audit
 
 Expected:
 
-- 38 tests passing.
+- 39 tests passing.
 - Production build passes.
 - Secret scan passes.
 - Audit reports 0 vulnerabilities.
@@ -100,6 +103,8 @@ npm run build
 
 Then open `chrome://extensions`, enable Developer mode, click `Load unpacked`, and select `dist/`.
 
+If the extension was already loaded before a rebuild, click the reload icon on the unpacked extension card, then reload the JioHotstar tab. Chrome does not automatically apply rebuilt content scripts to already-open tabs.
+
 ## Important Notes For Next MCP
 
 1. Do not read or print `.env`; secrets may exist locally.
@@ -107,10 +112,11 @@ Then open `chrome://extensions`, enable Developer mode, click `Load unpacked`, a
 3. If catalog count is below 5,752 in the app, use System Health -> `REBUILD LOCAL CATALOG` or clear IndexedDB.
 4. Do not reintroduce extension-only storage assumptions into the app. Web mode must work without `chrome.*` APIs.
 5. Keep the design monochrome/minimal unless the user requests another redesign.
+6. If the side panel works but page controls do not appear on JioHotstar, first verify the active URL is covered by `public/manifest.json` and that the page shows the `CURATOR CONNECTED` heartbeat after extension reload.
 
 ## Remaining Work
 
-- Push this Session 4 state to GitHub after final verification.
+- Push this Session 5 state to GitHub after final verification.
 - Optional Vercel deploy setup.
 - Optional extension-to-hosted-app bridge with `externally_connectable`.
 - Optional Playwright browser smoke tests for tabs.

@@ -8,7 +8,7 @@ import {
 } from "../shared/curation";
 import { db } from "../shared/db";
 import { getRecommendations } from "../shared/recommend";
-import { getRuntimeMode, getStorageProvider } from "../shared/runtime";
+import { getAppUrl, getRuntimeMode, getStorageProvider } from "../shared/runtime";
 import {
   getActionCount,
   getRecentActions,
@@ -46,7 +46,7 @@ type TabId = (typeof TABS)[number]["id"];
 type AppHealth = {
   actionCount: number;
   catalogCount: number;
-  dbStatus: "ready" | "degraded";
+  dbStatus: "loading" | "ready" | "degraded";
   lastRefreshLabel: string;
 };
 
@@ -765,8 +765,8 @@ export function App() {
   const [health, setHealth] = useState<AppHealth>({
     actionCount: 0,
     catalogCount: 0,
-    dbStatus: "ready",
-    lastRefreshLabel: "never"
+    dbStatus: "loading",
+    lastRefreshLabel: "starting"
   });
   const [recentActions, setRecentActions] = useState<UserAction[]>([]);
   const [state, setState] = useState<StoredState>({ items: {} });
@@ -774,6 +774,16 @@ export function App() {
 
   const runtime = getRuntimeMode();
   const storageProvider = getStorageProvider();
+
+  const openFullApp = useCallback(() => {
+    const url = getAppUrl();
+    if (runtime === "extension" && typeof chrome !== "undefined" && chrome.tabs?.create) {
+      chrome.tabs.create({ url });
+      return;
+    }
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [runtime]);
 
   const refreshSupportData = useCallback(async () => {
     try {
@@ -908,6 +918,15 @@ export function App() {
             <p>
               Run the full product in the browser now, then load the same build as an extension when you want page-level filtering inside JioHotstar.
             </p>
+          </div>
+
+          <div className="hero-actions">
+            <button className="button button-solid" onClick={openFullApp} type="button">
+              OPEN FULL APP
+            </button>
+            <a className="button" href="https://www.hotstar.com/in/home" rel="noreferrer" target="_blank">
+              OPEN JIOHOTSTAR
+            </a>
           </div>
 
           <div className="stat-grid">

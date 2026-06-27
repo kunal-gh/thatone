@@ -86,6 +86,16 @@ a {
   gap: 12px;
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hero-actions .button {
+  min-height: 46px;
+}
+
 .hero-kicker {
   display: inline-flex;
   width: fit-content;

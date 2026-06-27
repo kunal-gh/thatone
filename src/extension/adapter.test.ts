@@ -13,6 +13,7 @@ describe("isLikelyContentUrl", () => {
   it("accepts movie and show paths", () => {
     expect(isLikelyContentUrl("/in/movies/test/123/watch")).toBe(true);
     expect(isLikelyContentUrl("/in/shows/test/123")).toBe(true);
+    expect(isLikelyContentUrl("https://hotstar.com/in/shows/the-agency/1271322011")).toBe(true);
   });
 
   it("accepts originals, episodes, series, sports paths", () => {
@@ -200,6 +201,28 @@ describe("findCandidateCards", () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]?.title).toBe("Mirzapur");
     expect(cards[1]?.title).toBe("Criminal Justice");
+  });
+
+  it("extracts poster image cards even when JioHotstar uses click handlers instead of content links", () => {
+    document.body.innerHTML = `
+      <section>
+        <div class="RailRail">
+          <div class="TileRoot">
+            <img alt="The Agency" src="agency.jpg" />
+          </div>
+          <div class="TileRoot">
+            <img alt="The Bear" src="bear.jpg" />
+          </div>
+        </div>
+      </section>
+    `;
+
+    const cards = findCandidateCards(document);
+
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.title).toBe("The Agency");
+    expect(cards[0]?.canonicalKey).toMatch(/^title:/);
+    expect(cards[1]?.title).toBe("The Bear");
   });
 
   it("rejects nav, footer, and login links", () => {

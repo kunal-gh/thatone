@@ -1,5 +1,54 @@
 # Dev Log
 
+## Session 5 - 2026-06-27 (Live Extension Connection Repair)
+
+### Goal
+
+Fix the live usability failure reported from screenshots: the side panel opened on JioHotstar, but no card-level controls appeared, no full-app launch was obvious, and `http://127.0.0.1:4173/` refused connection.
+
+### Root Cause
+
+- The active site in the screenshot was `https://hotstar.com/in/home`; the manifest only declared wildcard subdomain patterns and did not explicitly include bare `hotstar.com` / `jiohotstar.com`.
+- The adapter depended too heavily on ideal content anchors and missed modern poster/click-handler layouts.
+- The content script did not expose a page-level connection indicator, so injection failures were invisible.
+- The local dev server simply was not running on port `4173`.
+
+### Completed
+
+- Added explicit bare-domain manifest coverage for `https://hotstar.com/*` and `https://jiohotstar.com/*` across host permissions, content scripts, and web-accessible resource matches.
+- Broadened `src/extension/adapter.ts` to detect poster-image cards and live click-handler layouts, with title cleanup to avoid utility labels.
+- Added `CURATOR CONNECTED / {n} CARDS / {n} CONTROLS / {n} HIDDEN` page heartbeat in `src/extension/content.ts`.
+- Added warmup rescans, SPA URL-change rescans, focus/visibility rescans, and mutation debouncing for JioHotstar's dynamic rails.
+- Added `OPEN FULL APP` and `OPEN JIOHOTSTAR` actions to the full app header for side-panel escape.
+- Changed startup health to show `loading` until the catalog sync completes.
+- Started Vite on `http://127.0.0.1:4173/` for live testing.
+
+### Tests and Checks
+
+```text
+npm test
+# 39/39 tests passing
+
+npm run build
+# production build passes
+
+npm run security:scan
+# no secrets detected in tracked/untracked project files
+```
+
+### Browser Verification
+
+- Opened `http://127.0.0.1:4173/` in the in-app browser.
+- Confirmed `OPEN FULL APP` is visible.
+- Confirmed health strip shows runtime `WEB`, database `READY`, and catalog `5,752 TITLES`.
+- Confirmed recommendations show `24 ranked titles from 5,752 catalog entries`.
+- Confirmed built `dist/manifest.json` contains bare Hotstar/JioHotstar matches.
+- Confirmed built `dist/extension/content.js` contains the `CURATOR CONNECTED` heartbeat.
+
+### User Action Required After Pull/Rebuild
+
+Chrome must reload the unpacked extension after any rebuild. In `chrome://extensions`, click the reload icon on the unpacked extension card, then reload the JioHotstar tab. The page is connected when the `CURATOR CONNECTED` heartbeat appears on JioHotstar.
+
 ## Session 4 - 2026-06-24 (Localhost App + Hardening Complete)
 
 ### Goal

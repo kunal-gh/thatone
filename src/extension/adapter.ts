@@ -3,89 +3,182 @@ import type { CandidateCard } from "../shared/types";
 
 // Matches all known JioHotstar content route segments
 export const CONTENT_URL_PATTERN =
-  /(\/(movies|shows|watch|tv|sports|originals|episodes|series|detail)\/?)/i;
+  /\/(?:in\/)?(?:movies?|shows?|watch|tv|sports|originals|episodes?|series|detail|content|clips?)\b/i;
+
+const BLOCKED_TITLES = new Set([
+  "all",
+  "details",
+  "home",
+  "login",
+  "more like this",
+  "play",
+  "search",
+  "upgrade",
+  "watch",
+  "watch now",
+  "watchlist"
+]);
+
+const CARD_WRAPPER_SELECTOR = [
+  "article",
+  "li",
+  "figure",
+  "[role='listitem']",
+  "[data-item]",
+  "[data-card]",
+  "[data-testid*='card']",
+  "[data-testid*='Card']",
+  "[class*='card']",
+  "[class*='Card']",
+  "[class*='item']",
+  "[class*='Item']",
+  "[class*='tile']",
+  "[class*='Tile']"
+].join(", ");
+
+const TITLE_SELECTOR = [
+  "[data-title]",
+  "[data-name]",
+  "[aria-label]",
+  "[title]",
+  "img[alt]",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "[data-testid*='title']",
+  "[data-testid*='Title']",
+  "[class*='title']",
+  "[class*='Title']"
+].join(", ");
 
 export function isLikelyContentUrl(url: string): boolean {
   return CONTENT_URL_PATTERN.test(url);
 }
 
-export function extractTitle(anchor: HTMLAnchorElement): string | null {
-  // 1. aria-label on the anchor (most explicit)
-  const aria = anchor.getAttribute("aria-label");
-  if (aria && normalizeTitle(aria)) {
-    return aria.trim();
-  }
+function cleanCandidateTitle(value: string | null | undefined): string | null {
+  const text = value?.replace(/\s+/g, " ").trim();
+  if (!text || text.length < 2 || text.length > 120) return null;
 
-  // 2. data-title attribute
-  const dataTitle = anchor.getAttribute("data-title");
-  if (dataTitle && normalizeTitle(dataTitle)) {
-    return dataTitle.trim();
-  }
+  const normalized = normalizeTitle(text);
+  if (!normalized || normalized.length < 2 || BLOCKED_TITLES.has(normalized)) return null;
 
-  // 3. title attribute on the anchor
-  const titleAttr = anchor.getAttribute("title");
-  if (titleAttr && normalizeTitle(titleAttr)) {
-    return titleAttr.trim();
-  }
+  return text;
+}
 
-  // 4. img[alt] inside the anchor (poster images always have the title)
-  const image = anchor.querySelector("img[alt]");
-  const alt = image?.getAttribute("alt");
-  if (alt && normalizeTitle(alt)) {
-    return alt.trim();
-  }
+function titleFromAttributes(element: Element | null): string | null {
+  if (!element) return null;
 
-  // 5. img[data-title] inside the anchor
-  const imgDataTitle = image?.getAttribute("data-title");
-  if (imgDataTitle && normalizeTitle(imgDataTitle)) {
-    return imgDataTitle.trim();
-  }
-
-  // 6. aria-label on an inner element
-  const innerAria = anchor.querySelector("[aria-label]")?.getAttribute("aria-label");
-  if (innerAria && normalizeTitle(innerAria)) {
-    return innerAria.trim();
-  }
-
-  // 7. textContent of the anchor itself (e.g. text-only links)
-  const text = anchor.textContent?.trim();
-  if (text && normalizeTitle(text)) {
-    return text;
-  }
-
-  // 8. Nearest heading / labelling element in the card wrapper
-  const wrapper = anchor.closest("article, li, figure, [role='listitem'], [data-item], [data-card], div");
-  const nearbyHeading = wrapper?.querySelector("h1, h2, h3, h4, [data-testid*='title'], span[class*='title'], p[class*='title']");
-  const headingText = nearbyHeading?.textContent?.trim();
-  if (headingText && normalizeTitle(headingText)) {
-    return headingText;
+  for (const attribute of ["aria-label", "data-title", "data-name", "title", "alt"]) {
+    const title = cleanCandidateTitle(element.getAttribute(attribute));
+    if (title) return title;
   }
 
   return null;
 }
 
-export function resolveCardElement(anchor: HTMLAnchorElement): HTMLElement | null {
-  // Walk up through increasingly broad wrappers
-  // JioHotstar uses article, li, figure, [role=listitem], [data-item], [data-card]
-  // Also catch generic card divs by class patterns
-  const selector = [
-    "article",
-    "li",
-    "figure",
-    "[role='listitem']",
-    "[data-item]",
-    "[data-card]",
-    "[class*='card']",
-    "[class*='item']",
-    "[class*='tile']",
-    "div"
-  ].join(", ");
+function titleFromElement(element: Element | null): string | null {
+  const attributeTitle = titleFromAttributes(element);
+  if (attributeTitle) return attributeTitle;
 
-  return anchor.closest<HTMLElement>(selector);
+  const titledChild = element?.querySelector(TITLE_SELECTOR) ?? null;
+  const childAttributeTitle = titleFromAttributes(titledChild);
+  if (childAttributeTitle) return childAttributeTitle;
+
+  const childText = cleanCandidateTitle(titledChild?.textContent);
+  if (childText) return childText;
+
+  const ownText = cleanCandidateTitle(element?.textContent);
+  if (ownText) return ownText;
+
+  return null;
+}
+
+function collectElements<T extends Element>(root: ParentNode, selector: string): T[] {
+  const elements = Array.from(root.querySelectorAll<T>(selector));
+  if (root instanceof Element && root.matches(selector)) {
+    elements.unshift(root as unknown as T);
+  }
+
+  return elements;
+}
+
+function isTinyUtilityImage(image: HTMLImageElement): boolean {
+  const rect = image.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0 && (rect.width < 72 || rect.height < 72)) {
+    return true;
+  }
+
+  const width = Number(image.getAttribute("width") ?? "0");
+  const height = Number(image.getAttribute("height") ?? "0");
+  return width > 0 && height > 0 && (width < 72 || height < 72);
+}
+
+function pushCandidate(
+  results: CandidateCard[],
+  seen: Set<HTMLElement>,
+  element: HTMLElement | null,
+  title: string | null,
+  url?: string | null
+): void {
+  if (!element || !title || seen.has(element)) return;
+
+  seen.add(element);
+
+  const usableUrl = url && isLikelyContentUrl(url) ? url : undefined;
+  const urlKey = usableUrl ? canonicalKeyFromUrl(usableUrl) : null;
+  const titleKey = canonicalKeyFromTitle(title);
+
+  results.push({
+    canonicalKey: urlKey ?? titleKey,
+    title,
+    url: usableUrl,
+    element
+  });
+}
+
+export function extractTitle(anchor: HTMLAnchorElement): string | null {
+  const directTitle = titleFromAttributes(anchor);
+  if (directTitle) return directTitle;
+
+  const imageTitle = titleFromElement(anchor.querySelector("img"));
+  if (imageTitle) return imageTitle;
+
+  const wrapper = anchor.closest(CARD_WRAPPER_SELECTOR);
+  const wrapperTitle = titleFromElement(wrapper);
+  if (wrapperTitle) return wrapperTitle;
+
+  const anchorText = cleanCandidateTitle(anchor.textContent);
+  if (anchorText) return anchorText;
+
+  return null;
+}
+
+export function resolveCardElement(anchor: HTMLAnchorElement): HTMLElement | null {
+  const wrapper = anchor.closest<HTMLElement>(CARD_WRAPPER_SELECTOR);
+  if (wrapper && wrapper !== document.body) {
+    return wrapper;
+  }
+
+  return anchor;
+}
+
+function resolveImageCardElement(image: HTMLImageElement): HTMLElement | null {
+  const link = image.closest<HTMLAnchorElement>("a[href]");
+  if (link) {
+    return resolveCardElement(link);
+  }
+
+  return (
+    image.closest<HTMLElement>(CARD_WRAPPER_SELECTOR) ??
+    image.parentElement ??
+    image
+  );
 }
 
 export function findCandidateCards(root: ParentNode = document): CandidateCard[] {
-  const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href]"));
+  const anchors = collectElements<HTMLAnchorElement>(root, "a[href]");
+  const images = collectElements<HTMLImageElement>(root, "img[alt], img[title], img[data-title]");
   const results: CandidateCard[] = [];
   const seen = new Set<HTMLElement>();
 
@@ -96,26 +189,16 @@ export function findCandidateCards(root: ParentNode = document): CandidateCard[]
     }
 
     const title = extractTitle(anchor);
-    if (!title) {
-      continue;
-    }
+    pushCandidate(results, seen, resolveCardElement(anchor), title, href);
+  }
 
-    const cardElement = resolveCardElement(anchor);
-    if (!cardElement || seen.has(cardElement)) {
-      continue;
-    }
+  for (const image of images) {
+    if (isTinyUtilityImage(image)) continue;
 
-    seen.add(cardElement);
-
-    const urlKey = canonicalKeyFromUrl(href);
-    const titleKey = canonicalKeyFromTitle(title);
-
-    results.push({
-      canonicalKey: urlKey ?? titleKey,
-      title,
-      url: href,
-      element: cardElement
-    });
+    const link = image.closest<HTMLAnchorElement>("a[href]");
+    const href = link?.getAttribute("href") ?? null;
+    const title = titleFromElement(image) ?? (link ? extractTitle(link) : null);
+    pushCandidate(results, seen, resolveImageCardElement(image), title, href);
   }
 
   return results;

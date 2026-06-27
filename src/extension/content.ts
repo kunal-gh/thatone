@@ -13,6 +13,13 @@ const HIDDEN_MARKER = "data-curator-hidden";
 const ACTIONS_MARKER = "data-curator-actions";
 const STYLE_MARKER = "data-curator-style";
 const TOAST_ID = "curator-undo-toast";
+const STATUS_ID = "curator-page-status";
+const BOOTSTRAP_FLAG = "__jioHotstarCuratorBootstrapped";
+const WARMUP_SCAN_LIMIT = 30;
+const WARMUP_SCAN_INTERVAL_MS = 1500;
+
+let pendingScan = false;
+let lastDetectedCount = 0;
 
 function ensureInjectedStyles(): void {
   if (document.getElementById(STYLE_MARKER)) return;
@@ -108,9 +115,64 @@ function ensureInjectedStyles(): void {
       background: #ffffff;
       color: #000000;
     }
+
+    #${STATUS_ID} {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      z-index: 2147483647;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: calc(100vw - 32px);
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 2px solid #000000;
+      border-radius: 4px;
+      color: #000000;
+      font: 700 11px/1 Arial, Helvetica, sans-serif;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      box-shadow: 4px 4px 0 #000000;
+      pointer-events: none;
+    }
+
+    #${STATUS_ID}[data-state="scanning"] {
+      background: #f3f3f3;
+      color: #1c1c1c;
+    }
   `;
 
   document.head.appendChild(style);
+}
+
+function ensurePageStatus(): HTMLElement {
+  let status = document.getElementById(STATUS_ID);
+  if (!status) {
+    status = document.createElement("div");
+    status.id = STATUS_ID;
+    status.setAttribute("data-state", "scanning");
+    status.textContent = "CURATOR CONNECTED / SCANNING JIOHOTSTAR";
+    document.body.appendChild(status);
+  }
+
+  return status;
+}
+
+function updatePageStatus(detectedCount = lastDetectedCount): void {
+  lastDetectedCount = Math.max(lastDetectedCount, detectedCount);
+
+  const status = ensurePageStatus();
+  const processed = document.querySelectorAll(`[${CARD_MARKER}="true"]`).length;
+  const controls = document.querySelectorAll(`[${ACTIONS_MARKER}="true"]`).length;
+  const hidden = document.querySelectorAll(`[${HIDDEN_MARKER}="true"]`).length;
+  const visibleCount = Math.max(lastDetectedCount, processed);
+
+  status.setAttribute("data-state", visibleCount > 0 ? "ready" : "scanning");
+  status.textContent =
+    visibleCount > 0
+      ? `CURATOR CONNECTED / ${visibleCount} CARDS / ${controls} CONTROLS / ${hidden} HIDDEN`
+      : "CURATOR CONNECTED / SCANNING JIOHOTSTAR";
 }
 
 function shouldHide(card: CandidateCard, state: StoredState): boolean {
@@ -310,11 +372,13 @@ async function injectActions(card: CandidateCard): Promise<void> {
   );
 
   card.element.appendChild(root);
+  updatePageStatus();
 }
 
 async function processDocument(root: ParentNode = document): Promise<void> {
   const state = await getStoredState();
   const cards = findCandidateCards(root);
+  updatePageStatus(cards.length);
 
   for (const card of cards) {
     if (card.element.getAttribute(CARD_MARKER) === "true") continue;
@@ -327,6 +391,18 @@ async function processDocument(root: ParentNode = document): Promise<void> {
 
     void injectActions(card);
   }
+
+  updatePageStatus(cards.length);
+}
+
+function scheduleProcessDocument(delayMs = 180): void {
+  if (pendingScan) return;
+
+  pendingScan = true;
+  window.setTimeout(() => {
+    pendingScan = false;
+    void processDocument(document);
+  }, delayMs);
 }
 
 function startObserver(): void {
@@ -334,7 +410,11 @@ function startObserver(): void {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
-        void processDocument(node);
+        if (node.id === STATUS_ID || node.closest(`[data-curator-root], #${TOAST_ID}, #${STATUS_ID}`)) {
+          continue;
+        }
+
+        scheduleProcessDocument();
       }
     }
   });
@@ -342,10 +422,46 @@ function startObserver(): void {
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
+function startWarmupScans(): void {
+  let scanCount = 0;
+  const interval = window.setInterval(() => {
+    scanCount += 1;
+    scheduleProcessDocument();
+
+    if (scanCount >= WARMUP_SCAN_LIMIT) {
+      window.clearInterval(interval);
+    }
+  }, WARMUP_SCAN_INTERVAL_MS);
+}
+
+function watchSinglePageNavigation(): void {
+  let lastHref = window.location.href;
+  window.setInterval(() => {
+    if (lastHref === window.location.href) return;
+
+    lastHref = window.location.href;
+    scheduleProcessDocument(250);
+  }, 1000);
+
+  window.addEventListener("focus", () => scheduleProcessDocument());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      scheduleProcessDocument();
+    }
+  });
+}
+
 async function bootstrap(): Promise<void> {
+  const windowState = window as unknown as Record<string, boolean>;
+  if (windowState[BOOTSTRAP_FLAG]) return;
+  windowState[BOOTSTRAP_FLAG] = true;
+
   ensureInjectedStyles();
+  ensurePageStatus();
   await processDocument(document);
   startObserver();
+  startWarmupScans();
+  watchSinglePageNavigation();
 }
 
 if (document.readyState === "loading") {

@@ -49,7 +49,7 @@ npm audit
 
 Current expected result:
 
-- 38 tests passing
+- 39 tests passing
 - build passes
 - secret scan passes
 - audit reports 0 vulnerabilities
@@ -61,6 +61,21 @@ Current expected result:
 3. Enable Developer mode.
 4. Click `Load unpacked`.
 5. Select `dist/`.
+6. After every rebuild, click the reload icon on the unpacked extension card.
+7. Reload the JioHotstar tab.
+
+When the content script is attached, the JioHotstar page shows a small fixed heartbeat:
+
+```text
+CURATOR CONNECTED / {n} CARDS / {n} CONTROLS / {n} HIDDEN
+```
+
+The manifest explicitly covers both bare and subdomain URLs:
+
+- `https://hotstar.com/*`
+- `https://*.hotstar.com/*`
+- `https://jiohotstar.com/*`
+- `https://*.jiohotstar.com/*`
 
 ## Catalog Commands
 
@@ -93,5 +108,7 @@ Never commit `.env`.
 ## Troubleshooting
 
 - If the app shows fewer than 5,752 catalog titles, open System Health and click `REBUILD LOCAL CATALOG`.
+- If the local URL says connection refused, start the dev server with `npm run dev -- --host 127.0.0.1 --port 4173`.
+- If the side panel opens but no page controls appear, reload the unpacked extension, reload the JioHotstar tab, and confirm the `CURATOR CONNECTED` heartbeat is visible.
 - If extension state looks duplicated, use the app views; they dedupe mirrored title/url records.
 - If the dev server port is busy, run Vite on another port and open that URL.

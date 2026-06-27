@@ -1,6 +1,6 @@
 # Task Tracker
 
-Last updated: 2026-06-24 (Session 4)
+Last updated: 2026-06-27 (Session 5)
 
 ## Objective
 
@@ -13,7 +13,7 @@ The product permanently hides unwanted titles, tracks watched titles, saves Watc
 
 ## Current Phase
 
-Phase 4: Localhost-first app, security hardening, and production verification - DONE.
+Phase 5: Live connectivity repair and localhost verification - DONE.
 
 ## Active Tasks
 
@@ -54,14 +54,20 @@ Phase 4: Localhost-first app, security hardening, and production verification - 
 | P3-09 | DONE | Fix catalog primary key collision | TMDB IDs now include media type, preserving all 5,752 rows |
 | P3-10 | DONE | Remove tracked build artifacts | `tsconfig*.tsbuildinfo` and generated `vite.config.js` removed |
 | P3-11 | DONE | Fix dev dependency advisory | `esbuild` overridden to fixed `^0.28.1`; audit clean |
+| P3-12 | DONE | Fix bare Hotstar domain injection | Manifest now matches `https://hotstar.com/*` and `https://jiohotstar.com/*` in addition to wildcard subdomains |
+| P3-13 | DONE | Add visible on-page extension heartbeat | JioHotstar page now shows `CURATOR CONNECTED` with detected card/control counts |
+| P3-14 | DONE | Add stronger live-card adapter fallback | Poster image cards and click-handler layouts are detected even when content links are missing |
+| P3-15 | DONE | Add full-app launch from side panel | App header now exposes `OPEN FULL APP` and `OPEN JIOHOTSTAR` actions |
+| P3-16 | DONE | Improve startup health honesty | Database health starts as `loading` until catalog sync completes |
 
 ## Verification Snapshot
 
-- `npm test`: 38/38 passing.
+- `npm test`: 39/39 passing.
 - `npm run build`: production build passes.
 - `npm run security:scan`: no tracked or untracked secrets detected.
 - `npm audit`: 0 vulnerabilities after `esbuild` override.
-- Browser verification: `http://127.0.0.1:4173/` renders, shows 5,752 catalog titles, no desktop/mobile horizontal overflow, System Health tab opens.
+- Browser verification: `http://127.0.0.1:4173/` renders live, shows runtime `WEB`, database `READY`, 5,752 catalog titles, and 24 recommendations from 5,752 catalog entries.
+- Built-extension verification: `dist/manifest.json` includes bare Hotstar/JioHotstar matches; `dist/extension/content.js` includes `CURATOR CONNECTED` page heartbeat.
 
 ## Next Work
 

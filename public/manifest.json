@@ -5,7 +5,9 @@
   "version": "0.4.0",
   "permissions": ["storage", "tabs", "alarms", "sidePanel"],
   "host_permissions": [
+    "https://hotstar.com/*",
     "https://*.hotstar.com/*",
+    "https://jiohotstar.com/*",
     "https://*.jiohotstar.com/*",
     "https://www.jiohotstar.com/*"
   ],
@@ -23,7 +25,9 @@
   "content_scripts": [
     {
       "matches": [
+        "https://hotstar.com/*",
         "https://*.hotstar.com/*",
+        "https://jiohotstar.com/*",
         "https://*.jiohotstar.com/*",
         "https://www.jiohotstar.com/*"
       ],
@@ -38,7 +42,9 @@
         "data/catalog/*"
       ],
       "matches": [
+        "https://hotstar.com/*",
         "https://*.hotstar.com/*",
+        "https://jiohotstar.com/*",
         "https://*.jiohotstar.com/*",
         "<all_urls>"
       ]
