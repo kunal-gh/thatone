@@ -25,6 +25,7 @@ import { PosterCard, PosterCardActions } from "../components/PosterCard";
 import { SwipeDeck } from "../components/SwipeDeck";
 import { SettingsTab } from "../components/SettingsTab";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { RadarChart, tasteEdgesToRadarData } from "../components/RadarChart";
 import type {
   CatalogItem,
   ExplorationMode,
@@ -673,6 +674,12 @@ function TasteTab({ tasteGraph }: { tasteGraph: TasteGraph }) {
             ? `Updated ${relativeTime(tasteGraph.centroid_updated_at)}`
             : "Centroid not computed"}
         </span>
+      </div>
+
+      {/* Radar chart visualization */}
+      <div className="glass-panel" style={{ marginBottom: "var(--space-md)" }}>
+        <h3 className="glass-panel__title">Genre Affinity Radar</h3>
+        <RadarChart data={tasteEdgesToRadarData(tasteGraph.edges, "genre", 8)} size={280} />
       </div>
 
       <div className="taste-grid">

@@ -273,7 +273,7 @@ function ImdbImportSection({
   );
 }
 
-// ─── TMDB Connection ──────────────────────────────────────────────────────────
+// ─── TMDB Connection + Account Linking ────────────────────────────────────────
 
 function TmdbConnectionSection() {
   const [apiKey, setApiKey] = useState(() => {
@@ -282,6 +282,21 @@ function TmdbConnectionSection() {
     } catch { return ""; }
   });
   const [status, setStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
+  const [accountStep, setAccountStep] = useState<"idle" | "awaiting" | "linked" | "error">("idle");
+  const [accountInfo, setAccountInfo] = useState<{ username: string; linkedAt: string } | null>(null);
+  const [requestToken, setRequestToken] = useState<string | null>(null);
+
+  // Check for existing session on mount
+  useState(() => {
+    try {
+      const raw = localStorage.getItem("curator_tmdb_session");
+      if (raw) {
+        const session = JSON.parse(raw) as { username: string; linkedAt: string };
+        setAccountInfo({ username: session.username, linkedAt: session.linkedAt });
+        setAccountStep("linked");
+      }
+    } catch { /* ignore */ }
+  });
 
   const testConnection = async () => {
     if (!apiKey.trim()) return;
@@ -302,25 +317,84 @@ function TmdbConnectionSection() {
     }
   };
 
+  const startAccountLink = async () => {
+    if (!apiKey.trim()) return;
+    try {
+      const res = await fetch(
+        `https://api.themoviedb.org/3/authentication/token/new?api_key=${encodeURIComponent(apiKey.trim())}`
+      );
+      if (!res.ok) throw new Error("Failed to create token");
+      const data = await res.json() as { request_token: string };
+      setRequestToken(data.request_token);
+      setAccountStep("awaiting");
+
+      // Open TMDB approval page
+      window.open(`https://www.themoviedb.org/authenticate/${data.request_token}`, "_blank");
+    } catch {
+      setAccountStep("error");
+    }
+  };
+
+  const completeAccountLink = async () => {
+    if (!requestToken || !apiKey.trim()) return;
+    try {
+      const sessionRes = await fetch(
+        `https://api.themoviedb.org/3/authentication/session/new?api_key=${encodeURIComponent(apiKey.trim())}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request_token: requestToken }) }
+      );
+      if (!sessionRes.ok) throw new Error("Token not approved yet");
+      const sessionData = await sessionRes.json() as { session_id: string };
+
+      // Fetch account info
+      const acctRes = await fetch(
+        `https://api.themoviedb.org/3/account?api_key=${encodeURIComponent(apiKey.trim())}&session_id=${sessionData.session_id}`
+      );
+      const acct = await acctRes.json() as { id: number; username: string; avatar: { gravatar: { hash: string } } };
+
+      const session = {
+        apiKey: apiKey.trim(),
+        sessionId: sessionData.session_id,
+        accountId: acct.id,
+        username: acct.username,
+        avatarHash: acct.avatar?.gravatar?.hash ?? null,
+        linkedAt: new Date().toISOString()
+      };
+
+      localStorage.setItem("curator_tmdb_session", JSON.stringify(session));
+      setAccountInfo({ username: session.username, linkedAt: session.linkedAt });
+      setAccountStep("linked");
+    } catch {
+      setAccountStep("error");
+    }
+  };
+
+  const unlinkAccount = () => {
+    localStorage.removeItem("curator_tmdb_session");
+    setAccountInfo(null);
+    setAccountStep("idle");
+    setRequestToken(null);
+  };
+
   return (
     <div className="settings-section">
       <div className="settings-section__header">
         <h3 className="settings-section__title">
           <span>🎥</span> TMDB Connection
         </h3>
-        <span className={`settings-section__badge settings-section__badge--${status === "ok" ? "success" : "default"}`}>
-          {status === "ok" ? "Connected" : "Optional"}
+        <span className={`settings-section__badge settings-section__badge--${accountStep === "linked" ? "success" : status === "ok" ? "success" : "default"}`}>
+          {accountStep === "linked" ? "Account Linked" : status === "ok" ? "API Connected" : "Optional"}
         </span>
       </div>
 
       <p className="settings-section__desc">
-        Connect your TMDB API key for enhanced metadata, poster images, and future watchlist sync.
+        Connect your TMDB API key for poster images and enhanced metadata. Optionally, link your account to sync your watchlist.
         Get a free key at{" "}
         <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer" style={{ color: "var(--accent-light)" }}>
           themoviedb.org
         </a>
       </p>
 
+      {/* API Key row */}
       <div className="settings-row">
         <input
           type="password"
@@ -335,15 +409,59 @@ function TmdbConnectionSection() {
           onClick={() => void testConnection()}
           disabled={!apiKey.trim() || status === "testing"}
         >
-          {status === "testing" ? "Testing..." : "Connect"}
+          {status === "testing" ? "Testing..." : "Verify Key"}
         </button>
       </div>
 
       {status === "ok" && (
-        <div className="settings-feedback settings-feedback--success">✓ API key verified successfully</div>
+        <div className="settings-feedback settings-feedback--success">✓ API key verified</div>
       )}
       {status === "error" && (
-        <div className="settings-feedback settings-feedback--error">✕ Invalid API key or network error</div>
+        <div className="settings-feedback settings-feedback--error">✕ Invalid key or network error</div>
+      )}
+
+      {/* Account linking */}
+      {status === "ok" && accountStep !== "linked" && (
+        <div className="settings-row" style={{ marginTop: 8 }}>
+          <div className="settings-row__info">
+            <strong>Link TMDB Account</strong>
+            <span>Sync your TMDB watchlist and ratings into Curator</span>
+          </div>
+          {accountStep === "idle" && (
+            <button className="btn btn-ghost" onClick={() => void startAccountLink()}>
+              Link Account →
+            </button>
+          )}
+          {accountStep === "awaiting" && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: "0.78rem", color: "var(--warning)" }}>Approve on TMDB, then:</span>
+              <button className="btn btn-primary" onClick={() => void completeAccountLink()}>
+                Confirm Link
+              </button>
+            </div>
+          )}
+          {accountStep === "error" && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: "0.78rem", color: "var(--danger)" }}>Failed — approve token first</span>
+              <button className="btn btn-ghost" onClick={() => void startAccountLink()}>
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Linked account info */}
+      {accountStep === "linked" && accountInfo && (
+        <div className="settings-row" style={{ marginTop: 8 }}>
+          <div className="settings-row__info">
+            <strong>@{accountInfo.username}</strong>
+            <span>Linked {new Date(accountInfo.linkedAt).toLocaleDateString()}</span>
+          </div>
+          <button className="btn btn-danger btn-xs" onClick={unlinkAccount}>
+            Unlink
+          </button>
+        </div>
       )}
     </div>
   );
