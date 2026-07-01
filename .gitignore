@@ -3,15 +3,20 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Secrets — never commit
+# Secrets - never commit
 .env
 *.env.local
 
-# Build artifacts
-tsconfig.tsbuildinfo
-tsconfig.node.tsbuildinfo
+# Generated build artifacts
+*.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# Local scratch folders from agents/tools
+.agents/
+.codex-analysis/
+initial ideas/
+data/
 
 # Local runtime logs
 logs/*.log

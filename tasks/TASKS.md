@@ -1,6 +1,6 @@
 # Task Tracker
 
-Last updated: 2026-07-02 (Session 8)
+Last updated: 2026-07-02 (Session 9)
 
 ## Objective
 
@@ -13,7 +13,7 @@ The product permanently hides unwanted titles, tracks watched titles, saves Watc
 
 ## Current Phase
 
-Phase 8: JioHotstar rail UX repair, sync reconciliation, and production verification - DONE.
+Phase 9: Repository/source tree cleanup and documentation refinement - DONE.
 
 ## Active Tasks
 
@@ -65,6 +65,7 @@ Phase 8: JioHotstar rail UX repair, sync reconciliation, and production verifica
 | P3-20 | DONE | Reconcile page state without refresh | Already-processed cards now re-check storage on every scan and reveal/collapse immediately |
 | P3-21 | DONE | Add poster-rich app surfaces | Discover, Watchlist, Library, and Swipe use TMDB poster cards and score/metadata overlays |
 | P3-22 | DONE | Add account/data management | IMDb CSV import, TMDB account linking, JSON backup/restore, diagnostics |
+| P3-23 | DONE | Clean repository clutter | Removed tracked agent extraction files, raw planning uploads, stale reports, duplicate root catalog data, and generated TypeScript artifacts |
 
 ## Verification Snapshot
 
@@ -74,6 +75,7 @@ Phase 8: JioHotstar rail UX repair, sync reconciliation, and production verifica
 - `npm audit`: 0 vulnerabilities after `esbuild` override.
 - Browser/app verification: `http://127.0.0.1:4173/` renders live, shows runtime health, poster-grid recommendations, Watchlist, Swipe, Library, Profile, System, and Settings surfaces.
 - Built-extension verification: `dist/manifest.json` includes bare Hotstar/JioHotstar matches; `dist/extension/content.js` includes `CURATOR CONNECTED` page heartbeat.
+- Repository hygiene: source tree now keeps app source, operational docs, scripts, catalog assets, config, and runtime entry files. Generated `dist/`, TypeScript build info, agent scratch folders, and legacy raw planning files are ignored or removed.
 
 ## Next Work
 

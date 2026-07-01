@@ -776,8 +776,7 @@ npm audit clean
 |   |-- CATALOG_PIPELINE.md
 |   |-- HANDOFF.md
 |   |-- PROJECT_BRIEF.md
-|   |-- architecture_diagram.png
-|   `-- comparison_analysis.png
+|   `-- architecture_diagram.png
 |-- logs/
 |   `-- DEV_LOG.md
 `-- tasks/

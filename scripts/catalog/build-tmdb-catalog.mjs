@@ -8,7 +8,7 @@
  *   OMDB_API_KEY=<key>    Enables IMDb rating enrichment via OMDb
  *
  * Output:
- *   data/catalog/tmdb-jiohotstar-catalog.json
+ *   public/data/catalog/tmdb-jiohotstar-catalog.json
  *
  * Strategy:
  *   1. Discover JioHotstar watch-provider ID from TMDB (India region)

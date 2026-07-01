@@ -1,5 +1,31 @@
 # Dev Log
 
+## Session 9 - 2026-07-02 (Repository cleanup and source tree refinement)
+
+### Goal
+
+Remove unrelated local/repo clutter so the project is easier to navigate and safer to hand off.
+
+### Completed
+
+- Removed tracked agent extraction artifacts under `.codex-analysis/`.
+- Removed raw planning upload folder `initial ideas/`.
+- Removed legacy/stale docs: `Docs/report.md`, `Docs/report (1).md`, `Docs/revised_architecture_blueprint.md`, and `Docs/comparison_analysis.png`.
+- Removed duplicate root catalog folder `data/`; canonical app catalog assets remain under `public/data/catalog/`.
+- Removed tracked generated artifact `vite.config.d.ts`; generated Vite/TypeScript outputs are ignored.
+- Removed ignored local generated/scratch folders and files: `dist/`, `.agents/`, `.codex-analysis/`, `data/`, `initial ideas/`, `*.tsbuildinfo`, and `vite.config.js`.
+- Updated `.gitignore` to block future agent scratch folders, root duplicate data output, generated TypeScript build artifacts, and local logs.
+- Updated README repository map and catalog builder output comment to match the refined structure.
+- Updated task tracker with the cleanup state.
+
+### Kept Intentionally
+
+- `node_modules/` remains local and ignored because it is the installed dependency cache needed for immediate test/build/dev commands.
+- `.env` remains local and ignored because it may contain user-provided catalog/API credentials and should not be read, printed, or committed.
+- `Docs/architecture_diagram.png` remains because README renders it as the architecture visual.
+
+---
+
 ## Session 8 - 2026-07-02 (JioHotstar rail UX repair + production verification)
 
 ### Goal
