@@ -6,6 +6,8 @@ Last updated: 2026-07-02 (Session 7 — v1.2.0)
 
 ## Current State
 
+**Session 8 correction:** JioHotstar rail hiding now targets the outer rail/list item and collapses width/flex-basis as well as height, so hidden/watched cards should no longer leave black horizontal slots. Already-processed cards also reconcile against storage on every scan, so side-panel/app actions can reflect on the live page without manual refresh.
+
 **Version:** 1.2.0 · **Commits:** `b48d662` (main)
 
 The project is a fully-functional, professional Chrome MV3 extension with a dark glassmorphism UI. It works in two modes:
@@ -144,7 +146,7 @@ npm run verify   # Vitest suite + build + secret scan
 npm audit        # 0 vulnerabilities expected
 ```
 
-Expected: 39 tests passing, build passes, secret scan passes, 0 audit vulns.
+Expected: 40 tests passing, build passes, secret scan passes, 0 audit vulns.
 
 ---
 

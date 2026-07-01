@@ -1,5 +1,50 @@
 # Dev Log
 
+## Session 8 - 2026-07-02 (JioHotstar rail UX repair + production verification)
+
+### Goal
+
+Map the user-reported screenshot issues to the current codebase and repair the highest-impact live-extension problems:
+
+- Hidden/watched cards left black blank spaces in JioHotstar rails.
+- Controls sometimes felt too visible or attached to the wrong visual area.
+- Side-panel/app actions did not always reflect on the JioHotstar page without refresh.
+- Security scan needed to remain clean after v1.2.0 docs and account-linking work.
+
+### Completed
+
+- `src/extension/adapter.ts`: added rail-item resolution so nested poster shells resolve to the direct carousel/list item wrapper.
+- `src/extension/content.ts`: changed collapse animation to remove horizontal footprint too (`width`, `max-width`, `flex-basis`, horizontal margins, horizontal padding).
+- `src/extension/content.ts`: changed hover reveal selector to direct child hover/focus so one rail hover does not expose every nested control overlay.
+- `src/extension/content.ts`: processed cards now reconcile against fresh `chrome.storage.local` state on every scan, so page state can update after side-panel actions without manual refresh.
+- `src/extension/adapter.test.ts`: added a regression test for nested JioHotstar-style rail slots.
+- `README.md`: changed the `.env` placeholder so the secret scanner does not flag documentation as a token.
+
+### Tests and Checks
+
+```text
+npm.cmd test
+# 40/40 tests passing
+
+npm.cmd run build
+# production build passes
+# dist/extension/content.js rebuilt as standalone IIFE
+
+npm.cmd run security:scan
+# no secrets detected
+
+npm.cmd audit --audit-level=low
+# 0 vulnerabilities
+```
+
+### Screenshot Mapping
+
+- Screenshot blank gaps after hiding: addressed by rail wrapper targeting plus horizontal collapse.
+- Screenshot always-visible controls across cards: addressed by direct-child hover/focus selector and better root selection.
+- Refresh needed for updates: addressed by state reconciliation for already-processed cards.
+- Poster-less project UI: already addressed in v1.2.0 with `PosterCard`, poster grids, Watchlist, Library, and Swipe deck.
+- Swipe not working: `SwipeDeck.tsx` has pointer gestures and fallback buttons; remaining work is browser E2E coverage to verify real pointer behavior across Chrome surfaces.
+
 ## Session 7 — 2026-07-02 (v1.2.0 · DB upgrade, backup/restore, background alarms)
 
 ### Goal

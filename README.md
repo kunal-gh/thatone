@@ -184,7 +184,7 @@ npm run build
 Create a `.env` file (never commit it):
 
 ```env
-TMDB_BEARER_TOKEN=your_tmdb_bearer_token
+TMDB_BEARER_TOKEN=<your_tmdb_bearer_token>
 OMDB_API_KEY=your_omdb_key
 ```
 

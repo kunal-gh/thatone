@@ -114,6 +114,45 @@ function isTinyUtilityImage(image: HTMLImageElement): boolean {
   return width > 0 && height > 0 && (width < 72 || height < 72);
 }
 
+function childLooksLikeContentCard(child: Element): boolean {
+  return Boolean(
+    child.querySelector("a[href], img[alt], img[title], img[data-title]")
+  );
+}
+
+function isHugeLayoutElement(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1200;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+
+  return (
+    rect.width > viewportWidth * 0.85 ||
+    rect.height > viewportHeight * 0.9 ||
+    rect.width * rect.height > viewportWidth * viewportHeight * 0.45
+  );
+}
+
+function resolveRailItemElement(seed: Element): HTMLElement | null {
+  let current: HTMLElement | null =
+    seed instanceof HTMLElement ? seed : seed.parentElement;
+
+  for (let depth = 0; current && current !== document.body && depth < 8; depth += 1) {
+    const parent = current.parentElement;
+    if (!parent || parent === document.body) break;
+
+    const contentSiblings = Array.from(parent.children).filter(childLooksLikeContentCard);
+    if (contentSiblings.length >= 2 && !isHugeLayoutElement(current)) {
+      return current;
+    }
+
+    current = parent;
+  }
+
+  return null;
+}
+
 function pushCandidate(
   results: CandidateCard[],
   seen: Set<HTMLElement>,
@@ -155,6 +194,9 @@ export function extractTitle(anchor: HTMLAnchorElement): string | null {
 }
 
 export function resolveCardElement(anchor: HTMLAnchorElement): HTMLElement | null {
+  const railItem = resolveRailItemElement(anchor);
+  if (railItem) return railItem;
+
   const wrapper = anchor.closest<HTMLElement>(CARD_WRAPPER_SELECTOR);
   if (wrapper && wrapper !== document.body) {
     return wrapper;
@@ -164,6 +206,9 @@ export function resolveCardElement(anchor: HTMLAnchorElement): HTMLElement | nul
 }
 
 function resolveImageCardElement(image: HTMLImageElement): HTMLElement | null {
+  const railItem = resolveRailItemElement(image);
+  if (railItem) return railItem;
+
   const link = image.closest<HTMLAnchorElement>("a[href]");
   if (link) {
     return resolveCardElement(link);

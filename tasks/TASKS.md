@@ -1,6 +1,6 @@
 # Task Tracker
 
-Last updated: 2026-06-27 (Session 5)
+Last updated: 2026-07-02 (Session 8)
 
 ## Objective
 
@@ -13,7 +13,7 @@ The product permanently hides unwanted titles, tracks watched titles, saves Watc
 
 ## Current Phase
 
-Phase 5: Live connectivity repair and localhost verification - DONE.
+Phase 8: JioHotstar rail UX repair, sync reconciliation, and production verification - DONE.
 
 ## Active Tasks
 
@@ -60,14 +60,19 @@ Phase 5: Live connectivity repair and localhost verification - DONE.
 | P3-15 | DONE | Add full-app launch from side panel | App header now exposes `OPEN FULL APP` and `OPEN JIOHOTSTAR` actions |
 | P3-16 | DONE | Improve startup health honesty | Database health starts as `loading` until catalog sync completes |
 | P3-17 | DONE | Add explicit active-tab bridge probe | Side panel now pings the content script and shows connected/disconnected state |
+| P3-18 | DONE | Fix JioHotstar rail blank spaces | Adapter targets the rail item wrapper and collapse now removes horizontal footprint |
+| P3-19 | DONE | Keep controls hover-only | Content controls now reveal only on direct card hover/focus, not whole rail hover |
+| P3-20 | DONE | Reconcile page state without refresh | Already-processed cards now re-check storage on every scan and reveal/collapse immediately |
+| P3-21 | DONE | Add poster-rich app surfaces | Discover, Watchlist, Library, and Swipe use TMDB poster cards and score/metadata overlays |
+| P3-22 | DONE | Add account/data management | IMDb CSV import, TMDB account linking, JSON backup/restore, diagnostics |
 
 ## Verification Snapshot
 
-- `npm test`: 39/39 passing.
+- `npm test`: 40/40 passing.
 - `npm run build`: production build passes.
 - `npm run security:scan`: no tracked or untracked secrets detected.
 - `npm audit`: 0 vulnerabilities after `esbuild` override.
-- Browser verification: `http://127.0.0.1:4173/` renders live, shows runtime `WEB`, database `READY`, 5,752 catalog titles, and 24 recommendations from 5,752 catalog entries.
+- Browser/app verification: `http://127.0.0.1:4173/` renders live, shows runtime health, poster-grid recommendations, Watchlist, Swipe, Library, Profile, System, and Settings surfaces.
 - Built-extension verification: `dist/manifest.json` includes bare Hotstar/JioHotstar matches; `dist/extension/content.js` includes `CURATOR CONNECTED` page heartbeat.
 
 ## Next Work

@@ -225,6 +225,32 @@ describe("findCandidateCards", () => {
     expect(cards[1]?.title).toBe("The Bear");
   });
 
+  it("uses the rail item as the card root when posters are nested in inner shells", () => {
+    document.body.innerHTML = `
+      <section>
+        <div class="RailRail">
+          <div class="rail-slot" data-testid="slot-a">
+            <div class="poster-shell">
+              <img alt="Shutter Island" src="shutter.jpg" />
+            </div>
+          </div>
+          <div class="rail-slot" data-testid="slot-b">
+            <div class="poster-shell">
+              <img alt="Mad Max Fury Road" src="mad-max.jpg" />
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+
+    const cards = findCandidateCards(document);
+
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.title).toBe("Shutter Island");
+    expect(cards[0]?.element.getAttribute("data-testid")).toBe("slot-a");
+    expect(cards[1]?.element.getAttribute("data-testid")).toBe("slot-b");
+  });
+
   it("rejects nav, footer, and login links", () => {
     document.body.innerHTML = `
       <nav>

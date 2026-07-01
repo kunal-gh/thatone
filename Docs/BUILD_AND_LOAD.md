@@ -55,7 +55,7 @@ npm audit
 4. Secret scan
 
 Expected results:
-- 39 tests passing
+- 40 tests passing
 - Build passes
 - Secret scan passes
 - `npm audit` reports 0 vulnerabilities
@@ -152,6 +152,8 @@ OMDB_API_KEY=your_key_here
 | App shows fewer than 5,752 catalog titles | System Health tab → **REBUILD LOCAL CATALOG** |
 | Local URL says "connection refused" | Start dev server: `npm run dev -- --host 127.0.0.1 --port 4173` |
 | Side panel opens but no page controls appear | Reload the unpacked extension, reload the JioHotstar tab, check for CURATOR heartbeat |
+| Hidden cards leave black gaps in JioHotstar rails | Rebuild and reload the extension; Session 8 targets the rail wrapper and collapses width/flex-basis too |
+| Side panel action does not reflect on the page | Keep the JioHotstar tab open and reload the extension build; processed cards now reconcile storage on every scan |
 | Extension state looks duplicated | The app dedupes mirrored title/URL records in views — this is expected |
 | Dev server port is busy | Change the port: `npm run dev -- --port 4200` |
 | TMDB key test fails | Check key has read access (v3 auth) at themoviedb.org/settings/api |

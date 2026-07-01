@@ -67,7 +67,8 @@ function ensureInjectedStyles(): void {
     }
 
     /* Show controls when the user hovers the card */
-    [data-curator-processed="true"]:hover [data-curator-root] {
+    [data-curator-processed="true"]:hover > [data-curator-root],
+    [data-curator-processed="true"]:focus-within > [data-curator-root] {
       opacity: 1;
       pointer-events: auto;
     }
@@ -114,6 +115,9 @@ function ensureInjectedStyles(): void {
       overflow: hidden !important;
       transition:
         max-height ${COLLAPSE_DURATION_MS}ms ease,
+        max-width  ${COLLAPSE_DURATION_MS}ms ease,
+        width      ${COLLAPSE_DURATION_MS}ms ease,
+        flex-basis ${COLLAPSE_DURATION_MS}ms ease,
         opacity    ${COLLAPSE_DURATION_MS * 0.8}ms ease,
         margin     ${COLLAPSE_DURATION_MS}ms ease,
         padding    ${COLLAPSE_DURATION_MS}ms ease !important;
@@ -242,28 +246,38 @@ function getPagePingResponse() {
 
 /**
  * Collapses a card element smoothly without leaving a blank space.
- * Uses max-height / opacity / margin transition, then sets display:none.
+ * Uses width + height collapse so horizontal carousels do not keep empty slots.
  */
 function collapseCard(el: HTMLElement): void {
   if (el.getAttribute(HIDDEN_MARKER) === "true") return;
 
   el.setAttribute(HIDDEN_MARKER, "true");
 
-  // Snapshot current height so transition works from explicit value → 0
-  const currentHeight = el.getBoundingClientRect().height;
-  el.style.maxHeight  = `${currentHeight}px`;
-  el.style.opacity    = "1";
+  const rect = el.getBoundingClientRect();
+  el.style.maxHeight = `${rect.height}px`;
+  el.style.maxWidth = `${rect.width}px`;
+  el.style.width = `${rect.width}px`;
+  el.style.flexBasis = `${rect.width}px`;
+  el.style.opacity = "1";
 
   // Force reflow before starting transition
   void el.offsetHeight;
 
   el.classList.add("curator-collapsing");
-  el.style.maxHeight  = "0px";
-  el.style.opacity    = "0";
-  el.style.marginTop  = "0";
+  el.style.maxHeight = "0px";
+  el.style.maxWidth = "0px";
+  el.style.width = "0px";
+  el.style.minWidth = "0px";
+  el.style.flexBasis = "0px";
+  el.style.opacity = "0";
+  el.style.marginTop = "0";
+  el.style.marginRight = "0";
   el.style.marginBottom = "0";
+  el.style.marginLeft = "0";
   el.style.paddingTop = "0";
+  el.style.paddingRight = "0";
   el.style.paddingBottom = "0";
+  el.style.paddingLeft = "0";
 
   window.setTimeout(() => {
     el.style.display = "none";
@@ -275,11 +289,19 @@ function revealCard(el: HTMLElement): void {
   el.removeAttribute(HIDDEN_MARKER);
   el.style.display = "";
   el.style.maxHeight = "";
+  el.style.maxWidth = "";
+  el.style.width = "";
+  el.style.minWidth = "";
+  el.style.flexBasis = "";
   el.style.opacity = "";
   el.style.marginTop = "";
+  el.style.marginRight = "";
   el.style.marginBottom = "";
+  el.style.marginLeft = "";
   el.style.paddingTop = "";
+  el.style.paddingRight = "";
   el.style.paddingBottom = "";
+  el.style.paddingLeft = "";
   el.classList.remove("curator-collapsing");
 }
 
@@ -445,15 +467,19 @@ async function processDocument(root: ParentNode = document): Promise<void> {
   updatePageStatus();
 
   for (const card of cards) {
-    if (card.element.getAttribute(CARD_MARKER) === "true") continue;
-    card.element.setAttribute(CARD_MARKER, "true");
-
     if (shouldHide(card, state)) {
       collapseCard(card.element);
       continue;
     }
 
-    void injectActions(card);
+    if (card.element.getAttribute(HIDDEN_MARKER) === "true") {
+      revealCard(card.element);
+    }
+
+    if (card.element.getAttribute(CARD_MARKER) !== "true") {
+      card.element.setAttribute(CARD_MARKER, "true");
+      void injectActions(card);
+    }
   }
 
   updatePageStatus();
