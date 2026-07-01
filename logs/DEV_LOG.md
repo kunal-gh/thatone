@@ -1,149 +1,187 @@
 # Dev Log
 
-## Session 5 - 2026-06-27 (Live Extension Connection Repair)
+## Session 7 — 2026-07-02 (v1.2.0 · DB upgrade, backup/restore, background alarms)
 
 ### Goal
 
-Fix the live usability failure reported from screenshots: the side panel opened on JioHotstar, but no card-level controls appeared, no full-app launch was obvious, and `http://127.0.0.1:4173/` refused connection.
-
-### Root Cause
-
-- The active site in the screenshot was `https://hotstar.com/in/home`; the manifest only declared wildcard subdomain patterns and did not explicitly include bare `hotstar.com` / `jiohotstar.com`.
-- The adapter depended too heavily on ideal content anchors and missed modern poster/click-handler layouts.
-- The content script did not expose a page-level connection indicator, so injection failures were invisible.
-- The local dev server simply was not running on port `4173`.
+Complete the remaining items from the implementation plan: database schema migration, data export/import, periodic background alarms, and update all documentation.
 
 ### Completed
 
-- Added explicit bare-domain manifest coverage for `https://hotstar.com/*` and `https://jiohotstar.com/*` across host permissions, content scripts, and web-accessible resource matches.
-- Broadened `src/extension/adapter.ts` to detect poster-image cards and live click-handler layouts, with title cleanup to avoid utility labels.
-- Added `CURATOR CONNECTED / {n} CARDS / {n} CONTROLS / {n} HIDDEN` page heartbeat in `src/extension/content.ts`.
-- Added warmup rescans, SPA URL-change rescans, focus/visibility rescans, and mutation debouncing for JioHotstar's dynamic rails.
-- Added an explicit `CURATOR_PAGE_PING` message path so the extension UI can prove whether the current tab is actually connected.
-- Added `Page Bridge` and `Active Tab` indicators in the main app health strip.
-- Added `OPEN FULL APP` and `OPEN JIOHOTSTAR` actions to the full app header for side-panel escape.
-- Changed startup health to show `loading` until the catalog sync completes.
-- Started Vite on `http://127.0.0.1:4173/` for live testing.
+**Database upgrade (v1 → v2)**
+- `src/shared/db.ts`: Dexie schema migration to v2.
+  - New `imdb_imports` table (tracks every IMDb CSV import with matched/unmatched counts).
+  - New `sync_state` table (stores alarm timestamps, install time, last sync info).
+  - Added `imdb_id` and `vote_average` indexes on `catalog` for faster lookup.
+  - Helper functions: `getSyncState`, `setSyncState`, `recordImdbImport`, `getImdbImportHistory`.
+
+**Data backup / restore**
+- `src/shared/data-transfer.ts`: Versioned JSON backup system.
+  - `exportAllData()` — collects StoredState + TasteGraph + TMDB username.
+  - `downloadBackup()` — triggers browser file download.
+  - `restoreBackup()` — validates `version: "1.0"`, validates structure, writes state atomically.
+- `src/components/SettingsTab.tsx`: Data Management section now has Export and Import Backup buttons with success/error feedback.
+
+**Background service worker**
+- `src/extension/background.ts`: Upgraded with structured logging and DB state writes.
+  - `catalog-check` daily alarm writes last-sync timestamp to `sync_state`.
+  - `tmdb-watchlist-sync` every-6h alarm pings active JioHotstar tab for content refresh.
+  - Extension icon click auto-opens side panel (`sidePanel.open`).
+
+**Documentation**
+- `Docs/HANDOFF.md`: Complete rewrite for v1.2.0.
+- `Docs/CATALOG_PIPELINE.md`: Complete rewrite with v2 schema, poster URL construction, IMDb cross-reference.
+- `Docs/BUILD_AND_LOAD.md`: Updated heartbeat text, added settings/backup instructions.
+- `README.md`: Complete rewrite for v1.0.0+ with all features, architecture, setup.
+- `logs/DEV_LOG.md`: Sessions 6 and 7 added.
 
 ### Tests and Checks
 
 ```text
-npm test
-# 39/39 tests passing
-
 npm run build
-# production build passes
-
-npm run security:scan
-# no secrets detected in tracked/untracked project files
+# ✓ 54 modules transformed, build passes
+# ✓ content.js built as IIFE — Chrome-safe
 ```
-
-### Browser Verification
-
-- Opened `http://127.0.0.1:4173/` in the in-app browser.
-- Confirmed `OPEN FULL APP` is visible.
-- Confirmed health strip shows runtime `WEB`, database `READY`, and catalog `5,752 TITLES`.
-- Confirmed recommendations show `24 ranked titles from 5,752 catalog entries`.
-- Confirmed built `dist/manifest.json` contains bare Hotstar/JioHotstar matches.
-- Confirmed built `dist/extension/content.js` contains the `CURATOR CONNECTED` heartbeat.
-
-### User Action Required After Pull/Rebuild
-
-Chrome must reload the unpacked extension after any rebuild. In `chrome://extensions`, click the reload icon on the unpacked extension card, then reload the JioHotstar tab. The page is connected when the `CURATOR CONNECTED` heartbeat appears on JioHotstar.
-
-## Session 4 - 2026-06-24 (Localhost App + Hardening Complete)
-
-### Goal
-
-Finish the project into a clean, testable state: run it as a local URL, redesign the frontend, add runtime health indicators, harden security, verify the full catalog, and leave documentation current for another MCP.
-
-### Completed
-
-**Localhost-first app**
-- `index.html` now loads the full discovery app.
-- `popup.html` is the dedicated Chrome extension popup.
-- Vite builds `index.html`, `app.html`, `popup.html`, background worker, and content script.
-- Local dev server runs at `http://127.0.0.1:4173/`.
-
-**Runtime/storage robustness**
-- Added `src/shared/runtime.ts` for runtime/storage capability detection.
-- Rewrote `src/shared/storage.ts` so the same app works with `chrome.storage.local` in extension mode and `localStorage` in normal web mode.
-- Added deduped state views so mirrored title/url records no longer double-count.
-- Added `src/shared/curation.ts` for shared action application and taste graph syncing.
-
-**Taste graph and catalog integrity**
-- Background worker now handles `SYNC_TASTE_GRAPH`, rebuilding from current state to avoid drift.
-- Added `buildTasteGraph()` to recompute edge weights and centroid.
-- Fixed the TMDB catalog primary key bug: content IDs now include media type (`tmdb:movie:{id}`, `tmdb:show:{id}`), so movie/show ID collisions no longer overwrite rows in Dexie.
-- Verified the bundled catalog has 5,752 unique items.
-
-**Frontend redesign**
-- Rewrote `src/app/App.tsx` around the existing product flows: Recommendations, Swipe Deck, Manage, Watch Later, Taste Graph, System Health.
-- Rewrote `src/styles/base.css` as a monochrome brutalist UI with large typography, square borders, and no RGB/gradient glass styling.
-- Rewrote `src/popup/App.tsx` to match the new design language.
-- Rewrote content-script injected controls to the same minimal monochrome style.
-
-**Health and production readiness**
-- Added health strip: runtime, storage provider, catalog count, DB status, action log, backend status.
-- Added System Health tab with catalog stats and rebuild control.
-- Added `vercel.json` with CSP, referrer, content type, and permissions headers.
-- Added `scripts/security/scan-secrets.mjs`.
-- Added `npm run security:scan` and `npm run verify`.
-- Added `.gitignore` protection for runtime logs.
-- Removed tracked generated build artifacts: `tsconfig*.tsbuildinfo`, `vite.config.js`.
-- Added `esbuild` override to fixed `^0.28.1`; `npm audit` is clean.
-
-### Tests and Checks
-
-```
-npm test
-# 38/38 tests passing
-
-npm run build
-# production build passes
-
-npm run security:scan
-# no secrets detected in tracked/untracked project files
-
-npm audit
-# 0 vulnerabilities
-```
-
-### Browser Verification
-
-- Opened `http://127.0.0.1:4173/` in the in-app browser.
-- Confirmed headline and full app render.
-- Confirmed 24 recommendation cards render.
-- Confirmed health strip shows web/local-storage mode and 5,752 catalog titles.
-- Confirmed System Health tab opens and shows rebuild control.
-- Confirmed no horizontal overflow at desktop width.
-- Confirmed no horizontal overflow at 390px mobile viewport.
 
 ### Version
 
-0.3.0 -> 0.4.0
+`1.1.0 → 1.2.0`
 
 ---
 
-## Session 3 - 2026-06-24 (Phase 3 Complete)
+## Session 6 — 2026-07-01 (v1.1.0 · TMDB account linking, radar chart)
 
-- Added IndexedDB (Dexie) catalog and action log.
-- Added background metadata/taste graph handlers.
-- Added Watch Later, Swipe Deck, Taste Graph, Catalog Health.
-- Added side panel and weekly catalog-refresh workflow.
-- Added full TMDB catalog output.
+### Goal
+
+Complete Phase 3 integration: full TMDB OAuth account linking, taste profile radar chart visualization.
+
+### Completed
+
+- `src/shared/tmdb-account.ts`: Full TMDB OAuth flow — request token, user approval redirect, session creation, paginated watchlist + ratings fetch, catalog matching logic.
+- `src/components/RadarChart.tsx`: Pure SVG radar/spider chart with concentric rings, gradient stroke, glow dots, and per-axis labels. Helper `tasteEdgesToRadarData` converts taste graph edges to chart input.
+- `src/components/SettingsTab.tsx`: TMDB section upgraded with full account linking UI — "Link Account" opens TMDB approval page, "Confirm Link" creates session, shows @username + linked date, Unlink button.
+- `src/app/App.tsx`: Genre Affinity Radar chart added at top of Taste Profile tab.
+- `public/icons/`: 4 branded SVG icons (16/32/48/128px) with indigo→purple gradient 'C' lettermark.
+- `public/manifest.json`: v1.0.0 with icons, CSP for Google Fonts.
+
+### Tests and Checks
+
+```text
+npm run build
+# ✓ 53 modules, clean build
+```
+
+### Version
+
+`1.0.0 → 1.1.0`
 
 ---
 
-## Session 2 - 2026-06-24 (Phase 2 Complete)
+## Session 5 — 2026-07-01 (v1.0.0 · Phase 3 + 4 complete)
 
-- Adapter hardening with fixtures and 17 adapter tests.
-- TMDB catalog pipeline.
-- Recommendation V1 with hard filters, scoring, diversity, exploration.
+### Goal
+
+Phase 3: IMDb account integration, settings tab. Phase 4: professional hardening.
+
+### Completed
+
+**Phase 3 — Account Integration**
+- `src/shared/imdb-import.ts`: IMDb CSV parser with auto-detection of ratings vs watchlist format, quoted-field handling, fuzzy catalog matching (imdb_id exact → title+year → title-only fallback).
+- `src/components/SettingsTab.tsx`: Full Settings tab with IMDb import (drag-drop, preview, progress bar), TMDB API key test, data management, diagnostics panel.
+
+**Phase 4 — Professional Hardening**
+- `src/components/ErrorBoundary.tsx`: React class error boundary — dark fallback UI, expandable stack trace, one-click recovery.
+- `src/shared/logger.ts`: Structured logger with color-coded levels, module scoping, 200-entry ring buffer, JSON export for bug reports.
+- `src/app/App.tsx`: Settings tab wired in with ErrorBoundary wrapping all tab content.
+- `src/styles/base.css`: Settings section CSS — import zone, progress bar, feedback states, settings rows.
+
+### Tests and Checks
+
+```text
+npm run build
+# ✓ 52 modules, clean build
+```
+
+### Version
+
+`0.4.0 → 1.0.0`
+
+---
+
+## Session 4 — 2026-07-01 (v0.4.0 · Complete UI/UX overhaul)
+
+### Goal
+
+Phase 1: fix the three most visible bugs in the extension. Phase 2: complete UI/UX rewrite.
+
+### Completed
+
+**Phase 1 — Bug Fixes (content script)**
+- `src/extension/content.ts`: Smooth card collapse animation (max-height/opacity/margin transition → no blank gaps). Controls default to `opacity: 0`, revealed on hover. `chrome.storage.onChanged` listener for real-time sync. Undo toast with 5s timer. Dark glass styled controls with Inter font.
+
+**Phase 2 — UI/UX Overhaul**
+- `src/styles/base.css`: 2300-line dark glassmorphism design system — Inter font, CSS custom properties, BEM component classes, animations (fadeIn, slideUp, shimmer, gradientShift), responsive breakpoints.
+- `src/components/PosterCard.tsx`: TMDB poster images with lazy load, SVG score ring, skeleton shimmer, hover action overlay, multiple size variants.
+- `src/components/SwipeDeck.tsx`: Pointer drag gestures, spring-back physics, throw-away animation, left/right/up direction indicators.
+- `src/app/App.tsx`: Full rewrite of all 7 tabs with poster grids, dark glass panels, animated counters.
+- `src/popup/App.tsx`: Redesigned popup with gradient header, dark stats grid.
+
+### Version
+
+`0.3.0 → 0.4.0` (then bumped to `1.0.0` in Session 5)
+
+---
+
+## Session 3 — 2026-06-27 (Session 5 in old numbering: Live Connection Repair)
+
+### Goal
+
+Fix the live usability failure: side panel opened on JioHotstar but no card controls appeared.
+
+### Root Cause
+
+- Manifest only declared wildcard subdomain patterns, not bare `hotstar.com` / `jiohotstar.com`.
+- Adapter depended on ideal content anchors; missed modern poster/click-handler layouts.
+- No page-level connection indicator — injection failures were invisible.
+
+### Completed
+
+- Added explicit bare-domain manifest coverage for `https://hotstar.com/*` and `https://jiohotstar.com/*`.
+- Broadened adapter to detect poster-image cards and live click-handler layouts.
+- Added `CURATOR CONNECTED / {n} CARDS / {n} CONTROLS / {n} HIDDEN` heartbeat.
+- Added warmup rescans, SPA URL-change rescans, mutation debouncing.
+- Added `CURATOR_PAGE_PING` message for side panel connectivity proof.
+- Added `Page Bridge` and `Active Tab` health strip indicators.
+
+### Version
+
+`0.3.0 → 0.4.0`
+
+---
+
+## Session 2 — 2026-06-24 (Localhost App + Hardening)
+
+- `index.html` loads the full app.
+- Added `src/shared/runtime.ts` for capability detection.
+- Rewrote `src/shared/storage.ts` for chrome/web dual mode.
+- Background worker handles `SYNC_TASTE_GRAPH`, daily catalog alarm.
+- Fixed TMDB content ID collision bug (`tmdb:movie:{id}` format).
+- Added `vercel.json`, CSP headers, `scripts/security/scan-secrets.mjs`.
+- Version: `0.2.0 → 0.3.0`
+
+---
+
+## Session 1 — 2026-06-24 (Phase 2 Complete — Adapter + TMDB Catalog)
+
+- Adapter hardening: 17 adapter tests.
+- TMDB catalog pipeline — 5,752 items.
+- Recommendation engine v1 with hard filters, scoring, diversity, exploration.
 - Repository initialized and pushed to `kunal-gh/thatone`.
+- Version: `0.1.0 → 0.2.0`
 
 ---
 
-## Session 1 - 2026-06-24 (Phase 1 Complete)
+## Session 0 — 2026-06-24 (Phase 1 Complete — MVP)
 
-- MVP scaffold, extension core, storage, adapter, popup, app, tests, and initial docs.
+- MVP scaffold, extension core, storage, adapter, popup, app, tests, initial docs.
+- Version: `0.0.0 → 0.1.0`

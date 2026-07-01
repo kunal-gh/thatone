@@ -1,693 +1,302 @@
-<div align="center">
+# JioHotstar Curator
 
-# Personal JioHotstar Curator
+> **AI-powered content curation for JioHotstar** — hide what you've watched, surface what you'll love, and train a personal taste profile without leaving the page.
 
-### A local-first recommendation and filtering layer for JioHotstar
-
-Hide unwanted titles, track watched content, build a private taste graph, and browse a cleaner recommendation surface powered by a full local catalog.
-
-<br />
-
-![Version](https://img.shields.io/badge/version-0.4.0-000000?style=for-the-badge)
-![React](https://img.shields.io/badge/React-19-111111?style=for-the-badge&logo=react&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.8-111111?style=for-the-badge&logo=typescript&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-7-111111?style=for-the-badge&logo=vite&logoColor=white)
-![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-111111?style=for-the-badge&logo=googlechrome&logoColor=white)
-![Dexie](https://img.shields.io/badge/IndexedDB-Dexie-111111?style=for-the-badge)
-![Local First](https://img.shields.io/badge/Architecture-Local_First-000000?style=for-the-badge)
-
-<br />
-
-![Tests](https://img.shields.io/badge/tests-38_passing-000000?style=flat-square)
-![Catalog](https://img.shields.io/badge/catalog-5752_titles-000000?style=flat-square)
-![Audit](https://img.shields.io/badge/npm_audit-0_vulnerabilities-000000?style=flat-square)
-![Security](https://img.shields.io/badge/secret_scan-enabled-000000?style=flat-square)
-![Backend](https://img.shields.io/badge/backend-not_required-000000?style=flat-square)
-
-</div>
+[![Version](https://img.shields.io/badge/version-1.2.0-6366f1?style=flat-square)](https://github.com/kunal-gh/thatone/releases)
+[![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-34d399?style=flat-square&logo=googlechrome)](https://developer.chrome.com/docs/extensions/mv3/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19-61dafb?style=flat-square&logo=react)](https://react.dev/)
+[![Build](https://img.shields.io/badge/build-passing-34d399?style=flat-square)](#)
 
 ---
 
-## Table Of Contents
+## What It Does
 
-- [What This Is](#what-this-is)
-- [Why It Exists](#why-it-exists)
-- [Current Product State](#current-product-state)
-- [Visual System](#visual-system)
-- [Core Surfaces](#core-surfaces)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Recommendation Engine](#recommendation-engine)
-- [Catalog Pipeline](#catalog-pipeline)
-- [Storage Model](#storage-model)
-- [Security And Compliance](#security-and-compliance)
-- [Run Locally](#run-locally)
-- [Build Extension](#build-extension)
-- [Verification](#verification)
-- [Repository Map](#repository-map)
-- [Development Timeline](#development-timeline)
-- [Future Roadmap](#future-roadmap)
-- [Handoff Notes](#handoff-notes)
+JioHotstar's home feed is noisy — reality shows you'd never watch, titles you've already seen, genres you don't care about. This extension fixes that:
+
+- **Hides unwanted titles** from JioHotstar's home feed with a smooth animation (no blank gaps)
+- **Shows controls only on hover** — your feed looks exactly the same until you interact
+- **Learns your taste** from every action you take (hide, watched, save for later)
+- **Recommends content** you'll actually like, ranked by a multi-signal scoring engine
+- **Imports your history** from IMDb or links your TMDB account for instant personalization
+- **Backs up your profile** — export and restore your entire curation state as JSON
 
 ---
 
-## What This Is
+## Features
 
-Personal JioHotstar Curator is a dual-surface product:
+### 🎬 On-Page Integration
 
-| Surface | Purpose | Entry |
-| --- | --- | --- |
-| Local web app | Fast live testing, recommendations, swipe deck, state management, future Vercel deployment | `index.html` |
-| Chrome extension | On-page filtering inside JioHotstar with injected controls | `popup.html`, `app.html`, content script |
+Hover over any movie or show on JioHotstar to see controls:
 
-The product is built for one clear job: give the viewer control over a noisy streaming homepage without touching protected streams, DRM, account internals, or private playback systems.
+| Action | Effect |
+|--------|--------|
+| **Hide** | Card collapses smoothly (no blank gap). Adds negative taste signal. |
+| **Watched** | Marks as seen. Removes from recommendations. Adds positive taste signal. |
+| **Save for Later** | Adds to your Watchlist tab. Neutral taste signal. |
+| **Undo** | 5-second glass toast lets you instantly undo any action |
 
-It works with:
+### 🖥 Side Panel App
 
-- Metadata
-- Browser UI state
-- Local storage
-- IndexedDB
-- Official JioHotstar links
-- A generated catalog of available titles
+Open the side panel from the extension icon. 7 tabs:
 
-It does not work with:
+#### Discover
+Poster-grid of ranked recommendations drawn from 5,752 JioHotstar titles. Each card shows:
+- Full TMDB poster image (lazy-loaded)
+- Recommendation score ring
+- Genre tags
+- One-click actions
 
-- DRM streams
-- Stream manifests
-- Cookies
-- Session tokens
-- Account credentials
-- Platform-private playback APIs
+#### Swipe
+Tinder-style card deck. Drag left to hide, right to mark watched, up to save for later. Spring physics for satisfying snap-back and throw animations.
 
----
+#### Watchlist
+Your saved "Watch Later" queue in a poster grid. Sort by date added, rating, or title.
 
-## Why It Exists
+#### Library
+All your hidden and watched titles. Filter by text search. Restore any item.
 
-Streaming platforms optimize recommendations for broad engagement. That is not always the same as personal taste.
+#### Profile (Taste Graph)
+Your personal taste profile displayed as:
+- **Genre Affinity Radar** — SVG spider chart of your top 8 genre weights
+- **Horizontal bar charts** — genre, actor, director, language signals
 
-This project solves a very specific pain:
-
-> "I want to permanently remove titles I do not want, track what I already watched, and get a cleaner feed that reflects my own taste."
-
-The product approach is:
-
-1. Detect titles on JioHotstar pages.
-2. Let the user mark titles as `hidden`, `watched`, or `watch_later`.
-3. Store every decision locally.
-4. Build a taste graph from those decisions.
-5. Score a catalog of JioHotstar titles.
-6. Recommend only unseen and unblocked content.
-7. Keep playback inside official JioHotstar pages.
-
----
-
-## Current Product State
-
-| Area | Status | Details |
-| --- | --- | --- |
-| Local web app | Complete | Runs at `http://127.0.0.1:4173/` |
-| Extension shell | Complete | Manifest V3 with popup, side panel, background, content script |
-| Catalog | Complete | 5,752 unique TMDB/JioHotstar items bundled |
-| Recommendation V1 | Complete | Deterministic scoring, hard filters, diversity rerank, exploration |
-| Taste graph | Complete | Genre, cast, director, language, decade, content type |
-| Watch Later | Complete | App and content-script support |
-| Swipe Deck | Complete | Fast preference training from catalog recommendations |
-| Health dashboard | Complete | Runtime, storage, catalog, DB, action log, backend |
-| Web storage fallback | Complete | Works without `chrome.*` APIs |
-| Security scan | Complete | `npm run security:scan` |
-| Vercel readiness | Ready | Static build plus security headers |
-| Audit state | Clean | `npm audit` reports 0 vulnerabilities |
-
----
-
-## Visual System
-
-The current UI uses a minimal brutalist monochrome system:
-
-| Design Rule | Implementation |
-| --- | --- |
-| Palette | Black, white, and neutral gray shades |
-| Shape language | Square cards, low radius, strong borders |
-| Typography | Large uppercase headlines, compact operational labels |
-| Layout | Dense but readable dashboard surfaces |
-| Motion | Minimal, state-driven, not decorative |
-| Accessibility | High contrast, clear button labels, stable layout |
-
-The UI is intentionally not a marketing landing page. The app opens directly into the working product.
-
-```mermaid
-flowchart LR
-  A["Brutalist visual system"] --> B["Large type"]
-  A --> C["Hard borders"]
-  A --> D["Monochrome palette"]
-  A --> E["Dense operational panels"]
-  A --> F["No gradient glass UI"]
+Score formula:
+```
+score = 0.35 × embedding_similarity
+      + 0.20 × taste_alignment
+      + 0.15 × quality_signal
+      + 0.10 × mood_match
+      + 0.08 × novelty
+      + 0.07 × diversity
+      + 0.05 × freshness
+      − penalties
 ```
 
----
+#### System Health
+Real-time dashboard: runtime mode, storage provider, catalog title count, DB status, alarm state, catalog rebuild control.
 
-## Core Surfaces
-
-### Web App Tabs
-
-| Tab | What It Does | Primary Files |
-| --- | --- | --- |
-| Recommendations | Scores and ranks catalog items, supports mood/type/mode controls | `src/app/App.tsx`, `src/shared/recommend.ts` |
-| Swipe Deck | Quickly trains taste signals with hide/watch/later/skip actions | `src/app/App.tsx`, `src/shared/curation.ts` |
-| Manage | Lists hidden/watched items, supports import/export and removal | `src/app/App.tsx`, `src/shared/storage.ts` |
-| Watch Later | Queue for titles saved for later | `src/app/App.tsx` |
-| Taste Graph | Shows taste edges and centroid | `src/shared/taste.ts` |
-| System Health | Shows runtime, storage, catalog, DB, action log, backend status | `src/app/App.tsx`, `src/shared/runtime.ts` |
-
-### Extension Surfaces
-
-| Surface | Purpose |
-| --- | --- |
-| Toolbar popup | Compact stats and launcher |
-| Side panel | Full app inside extension context |
-| Content script | Injects controls into JioHotstar cards |
-| Background worker | Metadata lookup, taste graph sync, alarm hook |
+#### Settings
+- **IMDb Import** — drag-and-drop your IMDb ratings/watchlist CSV
+- **TMDB Account** — verify API key + link account for watchlist sync
+- **Backup & Restore** — export/import all data as portable JSON
+- **Diagnostics** — log level control, log export
 
 ---
 
 ## Architecture
 
-### System Overview
+```
+src/
+├── app/
+│   └── App.tsx              — 7-tab side panel app (React)
+├── components/
+│   ├── PosterCard.tsx        — TMDB poster image with lazy load & score ring
+│   ├── SwipeDeck.tsx         — Drag-gesture card deck with spring physics
+│   ├── RadarChart.tsx        — Pure SVG radar chart for taste visualization
+│   ├── SettingsTab.tsx       — Import, account linking, backup, diagnostics
+│   └── ErrorBoundary.tsx     — React error boundary with recovery UI
+├── extension/
+│   ├── content.ts            — DOM injection (IIFE, no npm deps)
+│   ├── background.ts         — Service worker, alarms, message bus
+│   ├── adapter.ts            — JioHotstar card detection
+│   └── content-storage.ts   — Chrome storage wrapper (zero npm deps)
+├── popup/
+│   └── App.tsx               — Toolbar popup
+├── shared/
+│   ├── storage.ts            — Chrome/localStorage dual-mode adapter
+│   ├── db.ts                 — Dexie v2 schema (catalog, actions, imports, sync)
+│   ├── catalog.ts            — Catalog load, Dexie sync, matching helpers
+│   ├── recommend.ts          — Multi-signal recommendation scoring engine
+│   ├── curation.ts           — Action application, taste graph sync
+│   ├── taste.ts              — Taste graph edge weights, centroid
+│   ├── imdb-import.ts        — IMDb CSV parsing, auto-detect, fuzzy matching
+│   ├── tmdb-account.ts       — TMDB OAuth flow, watchlist/ratings sync
+│   ├── data-transfer.ts      — Versioned JSON backup / restore
+│   ├── logger.ts             — Structured logger with ring buffer
+│   ├── runtime.ts            — Runtime capability detection
+│   ├── normalize.ts          — Title normalization utilities
+│   └── types.ts              — Shared TypeScript types
+└── styles/
+    └── base.css              — Dark glassmorphism design system (2300+ lines)
 
-```mermaid
-flowchart TB
-  User["User"] --> WebApp["Local Web App / PWA Surface"]
-  User --> Extension["Chrome Extension Surface"]
-
-  Extension --> ContentScript["Content Script"]
-  Extension --> Popup["Popup"]
-  Extension --> SidePanel["Side Panel App"]
-  Extension --> Background["Background Worker"]
-
-  WebApp --> AppState["Curation State"]
-  SidePanel --> AppState
-  Popup --> AppState
-  ContentScript --> AppState
-
-  AppState --> StorageLayer["Storage Adapter"]
-  StorageLayer --> ChromeStorage["chrome.storage.local"]
-  StorageLayer --> LocalStorage["localStorage fallback"]
-
-  WebApp --> Dexie["Dexie / IndexedDB"]
-  Background --> Dexie
-  Dexie --> Catalog["Bundled Catalog JSON"]
-  Dexie --> Actions["User Action Log"]
-
-  AppState --> TasteGraph["Taste Graph"]
-  Catalog --> Recommender["Recommendation Engine"]
-  TasteGraph --> Recommender
-  Actions --> Recommender
-  Recommender --> RankedFeed["Ranked Feed"]
-
-  RankedFeed --> OfficialLink["Official JioHotstar Link"]
+public/
+├── manifest.json             — Chrome MV3 manifest (v1.2.0)
+├── icons/                    — Extension icons (16/32/48/128px SVG)
+└── data/catalog/
+    ├── tmdb-jiohotstar-catalog.json   — 5,752 curated titles
+    └── 91mobiles-jiohotstar-seed.json — 23-item fallback
 ```
 
-### Runtime Split
+### Build Pipeline
 
-```mermaid
-flowchart LR
-  Start["App starts"] --> Detect{"chrome.storage.local exists?"}
-  Detect -->|Yes| ExtensionMode["Extension mode"]
-  Detect -->|No| WebMode["Web mode"]
-
-  ExtensionMode --> ChromeState["Persist state in chrome.storage.local"]
-  WebMode --> LocalState["Persist state in localStorage"]
-
-  ChromeState --> SharedCuration["Shared curation API"]
-  LocalState --> SharedCuration
-
-  SharedCuration --> IndexedDB["IndexedDB catalog and action log"]
+```
+TypeScript → tsc type-check
+          → Vite build (React app, popup, background)
+          → esbuild IIFE (content script — standalone, no npm imports)
 ```
 
-### Data Flow
-
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant UI as App or Content Script
-  participant C as Curation API
-  participant S as Storage Adapter
-  participant G as Taste Graph
-  participant D as Dexie
-  participant R as Recommender
-
-  U->>UI: Hide / Watched / Later
-  UI->>C: apply action
-  C->>S: persist state
-  C->>D: log user action
-  C->>G: rebuild or preserve graph
-  UI->>R: request recommendations
-  R->>D: load catalog
-  R->>S: read hard filters
-  R->>G: read taste graph
-  R-->>UI: ranked results
-```
+The content script must be a self-contained IIFE because Chrome MV3 restricts module scripts in content script injection contexts. Esbuild bundles it separately from the Vite pipeline.
 
 ---
 
 ## Tech Stack
 
-### Application Stack
-
-| Layer | Technology | Why |
-| --- | --- | --- |
-| UI framework | React 19 | Component-driven app and popup surfaces |
-| Language | TypeScript 5.8 | Safer data models for catalog, state, graph, and recommendation pipeline |
-| Build tool | Vite 7 | Fast dev server and multi-entry production builds |
-| Extension platform | Chrome Manifest V3 | Content script, popup, side panel, background worker |
-| Local database | Dexie over IndexedDB | Large catalog and action log storage |
-| Extension state | `chrome.storage.local` | Persistent extension-owned user state |
-| Web fallback | `localStorage` | Makes the same app runnable as a normal URL |
-| Tests | Vitest + jsdom | Fast unit tests for adapter, storage, recommendation logic |
-| Catalog parsing | Cheerio | HTML parsing for seed/validator catalog |
-| Static deploy config | Vercel headers | Security policy for future hosted PWA |
-
-### Data Stack
-
-| Data Type | Storage | Notes |
-| --- | --- | --- |
-| Catalog | IndexedDB via Dexie | Synced from bundled public JSON |
-| Hidden/watched/later state | Chrome storage or localStorage | Runtime-dependent adapter |
-| Taste graph | Chrome storage or localStorage | Recomputed from stored state |
-| Action log | IndexedDB via Dexie | Local analytics and future learning |
-| Catalog source | TMDB watch providers | India region, JioHotstar/Hotstar provider filter |
-| Seed fallback | 91mobiles | Small fallback and validator source |
-
-### Security Stack
-
-| Area | Implementation |
-| --- | --- |
-| Secret prevention | `.env` ignored, secret scanner script |
-| Dependency audit | `npm audit`, `esbuild` override to fixed release |
-| Static headers | CSP, referrer policy, permissions policy |
-| Playback safety | Official JioHotstar links only |
-| Local-first privacy | No required backend |
-| Token handling | Catalog scripts read keys from `.env`, never from client runtime |
+| Layer | Technology |
+|-------|-----------|
+| Framework | React 19 + TypeScript 5 |
+| Build | Vite 7 + esbuild (content script) |
+| Database | Dexie (IndexedDB wrapper) |
+| Styling | Vanilla CSS — dark glassmorphism design system |
+| Font | Inter (Google Fonts) |
+| Extension | Chrome MV3 — service worker, side panel, content script |
+| Catalog | TMDB API (static build) + OMDB cross-reference |
+| Account | TMDB OAuth v3 (user-provided API key — no hardcoded secrets) |
 
 ---
 
-## Recommendation Engine
+## Setup
 
-The recommendation engine is deterministic and explainable. It runs fully in the browser.
+### Prerequisites
 
-### Pipeline
+- Node.js 18+ and npm
+- Chrome (or Chromium-based browser)
+- Free [TMDB API key](https://www.themoviedb.org/settings/api) (optional — for account sync)
 
-```mermaid
-flowchart TB
-  Catalog["Catalog candidates"] --> HardFilters["Hard filters"]
-  HardFilters --> Score["Weighted scoring"]
-  Score --> Sort["Sort by score"]
-  Sort --> Diversity["Diversity rerank"]
-  Diversity --> Exploration["Exploration injection"]
-  Exploration --> Results["Final recommendation list"]
-
-  State["Hidden / watched state"] --> HardFilters
-  Taste["Taste graph"] --> Score
-  Mood["Mood input"] --> Score
-  Actions["Recent actions"] --> Score
-```
-
-### Score Formula
-
-```text
-total =
-  0.35 * embedding_relevance
-+ 0.20 * taste_graph_match
-+ 0.15 * quality_signal
-+ 0.10 * mood_fit
-+ 0.08 * novelty
-+ 0.07 * diversity_score
-+ 0.05 * freshness
-- penalties
-```
-
-### Signals
-
-| Signal | Meaning |
-| --- | --- |
-| Embedding relevance | Similarity to watched-item centroid |
-| Taste graph match | Match against genre/cast/director/language/decade preferences |
-| Quality signal | TMDB rating normalized |
-| Mood fit | Match against mood text, genres, keywords, moods |
-| Novelty | Avoids repetitive recent watched genres |
-| Diversity score | Prevents over-concentration of same genre/director/actor |
-| Freshness | Release-date recency signal |
-| Penalties | Availability confidence and missing URL penalties |
-
-### Hard Filters
-
-Hard filters run before scoring:
-
-- Hidden titles are never recommended.
-- Watched titles are excluded by default.
-- URL keys and title keys both count.
-- Mirrored title/url storage records are deduped for app views.
-
----
-
-## Catalog Pipeline
-
-### Current Catalog Health
-
-| Metric | Value |
-| --- | --- |
-| Primary catalog items | 5,752 |
-| Movies | 4,020 |
-| Shows | 1,732 |
-| Unique `content_id` values | 5,752 |
-| Duplicate IDs | 0 |
-| Seed fallback items | 23 |
-
-### Catalog Generation
-
-```mermaid
-flowchart LR
-  Token["TMDB_BEARER_TOKEN"] --> ProviderDiscovery["Discover JioHotstar providers"]
-  ProviderDiscovery --> DiscoverMovie["Discover movies"]
-  ProviderDiscovery --> DiscoverTV["Discover TV"]
-  DiscoverMovie --> Enrich["Details / Credits / Keywords / Providers"]
-  DiscoverTV --> Enrich
-  Enrich --> OMDb["Optional OMDb enrichment"]
-  OMDb --> Embedding["Build feature vector"]
-  Embedding --> JSON["tmdb-jiohotstar-catalog.json"]
-  JSON --> PublicData["public/data/catalog"]
-  PublicData --> Dexie["Dexie sync in app"]
-```
-
-### Critical ID Rule
-
-TMDB movie IDs and TV IDs can collide. The project uses media-type-scoped IDs:
-
-```text
-tmdb:movie:{tmdb_id}
-tmdb:show:{tmdb_id}
-```
-
-Do not change this back to `tmdb:{id}`. The old format caused primary-key collisions in IndexedDB and reduced the loaded catalog from 5,752 rows to 5,740 rows.
-
----
-
-## Storage Model
-
-### Stored State
-
-```ts
-type ItemState = "hidden" | "watched" | "watch_later";
-
-type StoredItem = {
-  canonicalKey: string;
-  title: string;
-  sourceUrl?: string;
-  state: ItemState;
-  updatedAt: string;
-};
-
-type StoredState = {
-  items: Record<string, StoredItem>;
-};
-```
-
-### Taste Graph
-
-```ts
-type TasteGraph = {
-  edges: Record<string, TasteEdge>;
-  taste_centroid: number[] | null;
-  centroid_updated_at: string | null;
-};
-```
-
-### Runtime Storage Decision
-
-| Runtime | State storage | Catalog storage | Action log |
-| --- | --- | --- | --- |
-| Extension | `chrome.storage.local` | IndexedDB | IndexedDB |
-| Web app | `localStorage` | IndexedDB | IndexedDB |
-
----
-
-## Security And Compliance
-
-This project is designed around a strict safety boundary:
-
-```mermaid
-flowchart TB
-  Safe["Safe metadata layer"] --> Titles["Titles"]
-  Safe --> Ratings["Ratings"]
-  Safe --> Genres["Genres"]
-  Safe --> Links["Official links"]
-  Safe --> LocalState["Local user state"]
-
-  Unsafe["Out of scope"] --> DRM["DRM bypass"]
-  Unsafe --> Streams["Stream URLs"]
-  Unsafe --> Cookies["Cookies"]
-  Unsafe --> Tokens["Account tokens"]
-  Unsafe --> PrivateAPI["Private playback APIs"]
-```
-
-### Security Measures
-
-| Control | Status |
-| --- | --- |
-| `.env` ignored | Enabled |
-| Secret scanner | Enabled |
-| Security headers | Enabled in `vercel.json` |
-| NPM audit | Clean |
-| Dependency override | `esbuild` pinned to fixed range |
-| Backend secrets in client | None required |
-| Playback handling | Official JioHotstar links only |
-
----
-
-## Run Locally
+### Install and Run
 
 ```bash
+git clone https://github.com/kunal-gh/thatone.git
+cd thatone
 npm install
+
+# Run as web app
 npm run dev -- --host 127.0.0.1 --port 4173
-```
+# → open http://127.0.0.1:4173/
 
-Open:
-
-```text
-http://127.0.0.1:4173/
-```
-
-The local web app uses:
-
-- `index.html`
-- React app bundle
-- localStorage fallback
-- IndexedDB catalog/action log
-- bundled catalog JSON
-
----
-
-## Build Extension
-
-```bash
+# Or build as Chrome extension
 npm run build
+# → load dist/ in chrome://extensions (Developer mode → Load unpacked)
 ```
 
-Then:
+### Environment Variables
 
-1. Open `chrome://extensions`.
-2. Enable Developer mode.
-3. Click `Load unpacked`.
-4. Select `dist/`.
+Create a `.env` file (never commit it):
 
-### Build Outputs
+```env
+TMDB_BEARER_TOKEN=your_tmdb_bearer_token
+OMDB_API_KEY=your_omdb_key
+```
 
-| Output | Purpose |
-| --- | --- |
-| `dist/index.html` | Web app entry |
-| `dist/app.html` | Extension side-panel/full-app entry |
-| `dist/popup.html` | Extension toolbar popup |
-| `dist/manifest.json` | Chrome MV3 manifest |
-| `dist/extension/content.js` | Injected JioHotstar controls |
-| `dist/extension/background.js` | Extension background worker |
-| `dist/data/catalog/` | Bundled catalog files |
+Only needed if you want to rebuild the catalog. The extension ships with a pre-built catalog.
 
----
-
-## Verification
-
-### Full Verification
+### Rebuild The Catalog
 
 ```bash
-npm run verify
-npm audit --audit-level=low
-```
-
-Current expected state:
-
-| Check | Expected |
-| --- | --- |
-| Vitest | 38 tests passing |
-| TypeScript build | Passing |
-| Vite production build | Passing |
-| Secret scan | Passing |
-| NPM audit | 0 vulnerabilities |
-| Browser app | Renders at `http://127.0.0.1:4173/` |
-| Catalog health | 5,752 titles |
-| Mobile layout | No horizontal overflow at 390px |
-
-### Test Coverage
-
-| File | Coverage Focus |
-| --- | --- |
-| `src/extension/adapter.test.ts` | JioHotstar card/title extraction across fixtures |
-| `src/shared/recommend.test.ts` | Hard filters, score pipeline, diversity, exploration |
-| `src/shared/storage.test.ts` | Web fallback persistence and duplicate state dedupe |
-
----
-
-## Repository Map
-
-```text
-.
-|-- index.html                         # Local web app entry
-|-- app.html                           # Extension side panel / app entry
-|-- popup.html                         # Extension popup entry
-|-- public/
-|   |-- manifest.json                  # Chrome Manifest V3
-|   `-- data/catalog/                  # Bundled catalog JSON
-|-- src/
-|   |-- app/
-|   |   |-- App.tsx                    # Main 6-tab app
-|   |   `-- main.tsx
-|   |-- popup/
-|   |   |-- App.tsx                    # Extension popup
-|   |   `-- main.tsx
-|   |-- extension/
-|   |   |-- adapter.ts                 # DOM extraction
-|   |   |-- background.ts              # MV3 background worker
-|   |   |-- content.ts                 # Injected controls
-|   |   `-- fixtures/                  # Adapter HTML fixtures
-|   |-- shared/
-|   |   |-- catalog.ts                 # Catalog load/sync/match
-|   |   |-- curation.ts                # Shared state mutations
-|   |   |-- db.ts                      # Dexie database
-|   |   |-- normalize.ts               # Title and URL normalization
-|   |   |-- recommend.ts               # Recommendation engine
-|   |   |-- runtime.ts                 # Runtime detection
-|   |   |-- storage.ts                 # Chrome/localStorage adapter
-|   |   |-- taste.ts                   # Taste graph
-|   |   `-- types.ts                   # Project types
-|   `-- styles/
-|       `-- base.css                   # Brutalist monochrome design system
-|-- scripts/
-|   |-- catalog/
-|   |   |-- build-catalog.mjs          # 91mobiles seed
-|   |   `-- build-tmdb-catalog.mjs     # Full TMDB catalog
-|   `-- security/
-|       `-- scan-secrets.mjs           # Secret scanner
-|-- Docs/
-|   |-- BUILD_AND_LOAD.md
-|   |-- CATALOG_PIPELINE.md
-|   |-- HANDOFF.md
-|   |-- PROJECT_BRIEF.md
-|   `-- revised_architecture_blueprint.md
-|-- tasks/TASKS.md
-|-- logs/DEV_LOG.md
-|-- vercel.json
-|-- vite.config.ts
-|-- package.json
-`-- README.md
+npm run catalog:tmdb   # Full TMDB catalog (5,752 items)
+npm run catalog:seed   # 23-item fallback (no API key)
 ```
 
 ---
 
-## Development Timeline
+## IMDb Import
 
-```mermaid
-timeline
-  title Project Build Stages
-  Phase 1 : MV3 scaffold
-          : Popup
-          : Content script
-          : Storage model
-          : Adapter tests
-  Phase 2 : TMDB catalog pipeline
-          : Recommendation V1
-          : Taste graph
-          : Fixture coverage
-  Phase 3 : Dexie catalog storage
-          : Watch Later
-          : Swipe Deck
-          : System Health
-          : GitHub catalog refresh
-  Phase 4 : Localhost-first web app
-          : Brutalist UI redesign
-          : Web storage fallback
-          : Security scan
-          : Vercel headers
-          : Catalog ID collision fix
+1. Go to [imdb.com/list/watchlist](https://www.imdb.com/list/watchlist/) or [imdb.com/user/ratings](https://www.imdb.com/user/ratings/) on your IMDb profile
+2. Click **Export** → download the CSV
+3. Open the Curator side panel → **Settings** tab
+4. Drag-and-drop your CSV into the IMDb Import zone
+5. Review the preview (matched/unmatched titles), then click **Import**
+
+The parser auto-detects ratings vs. watchlist format. Matching uses IMDb ID first, then title + year fuzzy fallback.
+
+---
+
+## TMDB Account Linking
+
+1. Get a free API key at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
+2. Open Settings → TMDB Connection
+3. Paste your key and click **Verify Key**
+4. Click **Link Account** — TMDB opens in a new tab
+5. Approve access on the TMDB page
+6. Return to Curator and click **Confirm Link**
+
+Your TMDB watchlist and rated movies/shows will be matched against the local catalog.
+
+---
+
+## Data Backup
+
+All your data lives locally (IndexedDB + localStorage). Back it up:
+
+1. Settings → Data Management → **Download Backup**
+2. A JSON file is downloaded: `jiohotstar-curator-backup-YYYY-MM-DD.json`
+
+Restore on another device:
+1. Settings → Data Management → **Import Backup**
+2. Select the JSON file
+
+---
+
+## Development
+
+```bash
+npm run dev           # Vite dev server
+npm run build         # Full production build
+npm run test          # Vitest suite (39 tests)
+npm run verify        # Tests + build + secret scan
+npm run security:scan # Secret scan only
+npm audit             # Dependency audit
+```
+
+### Content Script Rules
+
+`content.ts` is built as a standalone IIFE. It can **only** import from:
+- `./content-storage` — chrome.storage wrapper
+- `./adapter` — JioHotstar card detection
+- `../shared/normalize` — pure string utils
+- `../shared/types` — TypeScript types (erased at build time)
+
+Never import Dexie, React, or any npm package into content.ts.
+
+### Database Schema
+
+```
+CuratorDB (Dexie v2)
+├── catalog       — 5,752 CatalogItem rows (content_id PK)
+├── user_actions  — action log (action_id PK)
+├── imdb_imports  — import history (auto-increment PK)
+└── sync_state    — alarm timestamps and sync metadata (key PK)
 ```
 
 ---
 
-## Future Roadmap
+## Security
 
-| Phase | Idea | Why |
-| --- | --- | --- |
-| P4-01 | Vercel deployment | Make the web app accessible without extension loading |
-| P4-02 | Extension-to-web bridge | Sync extension state with hosted app |
-| P4-03 | Bandit/logistic learner | Improve ranking from `user_actions` |
-| P4-04 | Natural language search | Let users ask for moods, runtime, genre, comfort/intensity |
-| P4-05 | Visual E2E smoke tests | Automate tab and layout checks |
-| P5 | Multi-platform adapters | Extend concept to other OTT catalogs |
-
-Deferred by design:
-
-- Redis
-- pgvector
-- LangGraph
-- Ollama/local LLM runtime
-- Two-tower neural network
-- Hosted sync backend
-- Smart TV/DIAL launch
-
-The project keeps the current product simple because a single-user local-first recommender does not need heavy backend infrastructure yet.
+- **No hardcoded secrets** — TMDB API key is user-provided, stored in `localStorage`
+- **No backend** — all data is local; no telemetry, no analytics
+- **CSP enforced** — extension pages: `script-src 'self'`, allows Google Fonts
+- **Manifest permissions** — `storage`, `tabs`, `alarms`, `sidePanel` only
+- **Host permissions** — scoped to `hotstar.com` and `jiohotstar.com` only
+- **No DRM bypass** — no stream URL access, no cookie interception, no account tokens
+- `npm audit` — 0 vulnerabilities
 
 ---
 
-## Handoff Notes
+## Roadmap
 
-For another MCP or developer, read in this order:
-
-1. `tasks/TASKS.md`
-2. `logs/DEV_LOG.md`
-3. `Docs/HANDOFF.md`
-4. `Docs/BUILD_AND_LOAD.md`
-5. `Docs/CATALOG_PIPELINE.md`
-6. `Docs/PROJECT_BRIEF.md`
-
-Important rules:
-
-- Do not read, print, or commit `.env`.
-- Keep catalog IDs in `tmdb:movie:{id}` / `tmdb:show:{id}` format.
-- Keep web mode independent from `chrome.*` APIs.
-- Run `npm run verify` before pushing.
-- Run `npm audit --audit-level=low` before calling a release clean.
+- [ ] Trakt.tv OAuth integration (industry-standard watch history)
+- [ ] Cloudflare Worker proxy (hide TMDB key from network inspector)
+- [ ] Chrome Web Store release (privacy policy + screenshots needed)
+- [ ] Playwright E2E tests (verify heartbeat on live JioHotstar tab)
+- [ ] Vercel deployment of web app
+- [ ] Live catalog refresh from hosted TMDB endpoint
 
 ---
 
 ## Repository
 
-```text
-https://github.com/kunal-gh/thatone
-```
+**GitHub:** [github.com/kunal-gh/thatone](https://github.com/kunal-gh/thatone)
 
-<div align="center">
+**Architecture docs:** [Docs/HANDOFF.md](Docs/HANDOFF.md) · [Docs/BUILD_AND_LOAD.md](Docs/BUILD_AND_LOAD.md) · [Docs/CATALOG_PIPELINE.md](Docs/CATALOG_PIPELINE.md)
 
-### Built as a local-first personal curation layer, not a streaming bypass.
-
-Metadata in. Taste graph out. Official playback stays official.
-
-</div>
+**Dev log:** [logs/DEV_LOG.md](logs/DEV_LOG.md)

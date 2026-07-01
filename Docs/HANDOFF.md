@@ -1,101 +1,125 @@
 # Handoff
 
-Last updated: 2026-06-27 (Session 5)
+Last updated: 2026-07-02 (Session 7 — v1.2.0)
+
+---
 
 ## Current State
 
-The project is now a local-first JioHotstar curation product with two working surfaces:
+**Version:** 1.2.0 · **Commits:** `b48d662` (main)
 
-- **Web app/PWA mode:** open `http://127.0.0.1:4173/` while the dev server is running. This is the easiest way to test and is the path toward Vercel deployment.
-- **Chrome extension mode:** build `dist/` and load it unpacked in Chrome. The extension injects controls into JioHotstar pages and can open the side panel/full app.
+The project is a fully-functional, professional Chrome MV3 extension with a dark glassmorphism UI. It works in two modes:
 
-The app is intentionally local-first. There is no backend requirement for the current product. The health indicator says `Backend: Not required` because catalog, state, taste graph, and action log all run in the browser.
+- **Chrome Extension mode:** Build `dist/` and load it unpacked. The extension injects hover controls into JioHotstar and opens an interactive side panel app.
+- **Web App / PWA mode:** Run `npm run dev` and open `http://127.0.0.1:4173/`. Same app, no extension APIs needed — falls back to `localStorage`.
 
-Session 5 repaired the live usability gap seen on `https://hotstar.com/in/home`: the manifest now explicitly matches bare `hotstar.com` / `jiohotstar.com`, the adapter can detect poster-image cards even when JioHotstar does not expose ideal content links, and the content script shows an on-page `CURATOR CONNECTED` heartbeat with card/control counts.
-It also adds a side-panel bridge probe, so the panel can show whether the active Hotstar tab is actually answering the extension message ping.
+The product is **local-first** — no backend required. All data lives in `chrome.storage.local` (extension) or `localStorage + IndexedDB` (web mode).
+
+---
 
 ## What Is Built
 
-### App Tabs
+### App Tabs (7)
 
 | Tab | Purpose |
-| --- | --- |
-| Recommendations | Ranked catalog recommendations with mode, type, mood, actions, and score breakdown |
-| Swipe Deck | Fast training deck seeded from recommendations |
-| Manage | Hidden/watched list, remove, export, import |
-| Watch Later | Queue with open, mark watched, and remove |
-| Taste Graph | Signed taste-edge weights plus centroid view |
-| System Health | Runtime/storage/catalog/DB/action-log indicators and catalog rebuild |
+|-----|---------|
+| **Discover** | Poster-grid of ranked recommendations. Lazy-loaded TMDB images, score ring badge, hover action overlay. |
+| **Swipe** | Tinder-style card deck with pointer drag gestures and spring-back physics. Swipe to hide/watch/later. |
+| **Watchlist** | Poster grid of saved "Watch Later" items. Sort by date/rating/title. |
+| **Library** | Hidden + Watched items. Search filter, bulk actions, poster thumbnails. |
+| **Profile** | Taste graph: genre affinity radar chart (SVG) + horizontal bar charts for genre/actor/director weights. |
+| **System** | Health dashboard: runtime, storage, catalog count, DB status, alarm state, catalog rebuild button. |
+| **Settings** | IMDb import, TMDB account linking, backup/restore, diagnostics, log export. |
 
 ### Extension Surfaces
 
-- `popup.html`: compact extension popup with stats and launch buttons.
-- `app.html`: extension side panel/full app entry.
-- `index.html`: localhost/Vercel full app entry.
-- `src/extension/content.ts`: detects cards, injects Hide/Watched/Later controls, rating badge, undo toast.
-- `src/extension/content.ts`: also shows `CURATOR CONNECTED / {n} CARDS / {n} CONTROLS / {n} HIDDEN` on JioHotstar so connectivity is visible.
-- `src/app/App.tsx`: now pings the active tab and reports `Page Bridge` status in the health strip.
-- `src/extension/background.ts`: handles `SYNC_TASTE_GRAPH`, `FETCH_CARD_META`, and daily catalog alarm.
+| File | Purpose |
+|------|---------|
+| `popup.html` | Compact popup: dark gradient header, stats grid, launch buttons |
+| `app.html` | Side panel / full app entry |
+| `index.html` | Localhost / Vercel web app entry |
+| `src/extension/content.ts` | Injects hover controls into JioHotstar cards. Shows CURATOR CONNECTED heartbeat. |
+| `src/extension/background.ts` | Service worker: taste graph sync, card meta fetch, catalog alarm, TMDB sync alarm |
 
-### Data and Storage
+### Content Script Behavior (`content.ts`)
 
-- `public/data/catalog/tmdb-jiohotstar-catalog.json`: full generated catalog, 5,752 unique items.
-- `public/data/catalog/91mobiles-jiohotstar-seed.json`: 23-item fallback/validator catalog.
-- `src/shared/db.ts`: Dexie database with `catalog` and `user_actions`.
-- `src/shared/storage.ts`: Chrome storage in extension mode, localStorage fallback in web mode.
-- `src/shared/curation.ts`: shared action mutations and graph syncing.
-- `src/shared/catalog.ts`: no-store catalog fetch, Dexie sync, URL/title matching.
+- **Controls:** Hidden by default (`opacity: 0`), revealed on hover with 0.2s fade. No permanent overlay.
+- **Card hiding:** Smooth CSS collapse animation (`max-height`, `opacity`, `margin` transitions). No blank gaps.
+- **Storage sync:** `chrome.storage.onChanged` listener — side panel actions immediately reflected on page.
+- **Undo toast:** 5-second glass toast with click-to-undo after every action.
+- **Heartbeat:** Small dark glass pill at bottom-left: `✓ CURATOR · {n} cards · {n} controls · {n} hidden`.
 
-### Recommendation Engine
+### Components
 
-- `src/shared/recommend.ts`: hard filters, scoring, diversity rerank, exploration injection.
-- Score formula remains:
+| Component | Purpose |
+|-----------|---------|
+| `PosterCard.tsx` | TMDB image, lazy load, skeleton shimmer, SVG score ring, hover action overlay |
+| `SwipeDeck.tsx` | Pointer drag deck with spring physics, direction indicators |
+| `RadarChart.tsx` | Pure SVG spider chart for taste profile visualization |
+| `SettingsTab.tsx` | IMDb import, TMDB OAuth account linking, backup/restore, diagnostics |
+| `ErrorBoundary.tsx` | React class boundary with dark fallback UI, one-click recovery |
+
+### Shared Modules
+
+| Module | Purpose |
+|--------|---------|
+| `storage.ts` | Chrome storage (extension) / localStorage (web) adapter with subscriptions |
+| `db.ts` | Dexie v2 schema — `catalog`, `user_actions`, `imdb_imports`, `sync_state` |
+| `catalog.ts` | Static catalog load → Dexie sync, URL/title matching, recommendation helpers |
+| `recommend.ts` | Scoring engine (embedding + taste + quality + mood + novelty + diversity + freshness) |
+| `curation.ts` | Action application, taste graph sync |
+| `taste.ts` | Taste graph edge weights, centroid computation |
+| `imdb-import.ts` | IMDb CSV parser, auto-detect, fuzzy matching against catalog |
+| `tmdb-account.ts` | TMDB OAuth: request token → approval → session, watchlist/ratings fetch |
+| `data-transfer.ts` | Backup/restore — versioned JSON export/import of all user data |
+| `logger.ts` | Structured logger, ring buffer, JSON export for bug reports |
+| `runtime.ts` | Runtime capability detection (chrome vs. web) |
+
+### Data & Storage
+
+- `public/data/catalog/tmdb-jiohotstar-catalog.json` — 5,752 items with poster paths, genres, embeddings
+- `public/data/catalog/91mobiles-jiohotstar-seed.json` — 23-item fallback
+- `public/icons/` — SVG icons at 16/32/48/128px (indigo→purple gradient, "C" lettermark)
+- **Dexie v2** tables: `catalog`, `user_actions`, `imdb_imports`, `sync_state`
+- TMDB session stored in `localStorage` key `curator_tmdb_session`
+- TMDB API key stored in `localStorage` key `curator_tmdb_key`
+
+### Recommendation Engine Score Formula
 
 ```
-0.35*embedding
-+ 0.20*taste
-+ 0.15*quality
-+ 0.10*mood
-+ 0.08*novelty
-+ 0.07*diversity
-+ 0.05*freshness
-- penalties
+score = 0.35 × embedding_similarity
+      + 0.20 × taste_alignment
+      + 0.15 × quality_signal
+      + 0.10 × mood_match
+      + 0.08 × novelty
+      + 0.07 × diversity
+      + 0.05 × freshness
+      - penalties (hidden, already_watched)
 ```
+
+---
 
 ## Security State
 
-- `.env` is ignored and was not committed.
-- `npm run security:scan` scans tracked and untracked non-ignored files.
-- `npm audit` is clean after pinning `esbuild` with an override.
-- `vercel.json` includes CSP, referrer policy, content type, and permissions headers.
-- Playback stays on official JioHotstar URLs. No DRM, stream, cookie, or account-token bypass exists in this implementation.
+- `.env` is git-ignored and never committed.
+- TMDB API key is **user-provided** — never hardcoded in source.
+- TMDB session_id stored in `localStorage` (scoped to the extension page, not exposed to JioHotstar).
+- `npm run security:scan` scans tracked + untracked non-ignored files for secrets.
+- `npm audit` — 0 vulnerabilities (`esbuild` pinned via override).
+- `vercel.json` includes CSP, referrer policy, content-type, and permissions headers.
+- Extension CSP in `manifest.json`: `script-src 'self'`, allows Google Fonts for Inter font.
+- No DRM bypass, no stream/cookie interception, no account token access.
 
-## How To Run
+---
+
+## How To Run (Development)
 
 ```bash
 npm install
 npm run dev -- --host 127.0.0.1 --port 4173
 ```
 
-Then open:
-
-```text
-http://127.0.0.1:4173/
-```
-
-## How To Verify
-
-```bash
-npm run verify
-npm audit
-```
-
-Expected:
-
-- 39 tests passing.
-- Production build passes.
-- Secret scan passes.
-- Audit reports 0 vulnerabilities.
+Open: `http://127.0.0.1:4173/`
 
 ## How To Build Extension
 
@@ -103,24 +127,51 @@ Expected:
 npm run build
 ```
 
-Then open `chrome://extensions`, enable Developer mode, click `Load unpacked`, and select `dist/`.
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select `dist/`
+4. After each rebuild: click the **reload icon** on the extension card, then reload the JioHotstar tab.
 
-If the extension was already loaded before a rebuild, click the reload icon on the unpacked extension card, then reload the JioHotstar tab. Chrome does not automatically apply rebuilt content scripts to already-open tabs.
+Extension is connected when the bottom-left pill shows:
+```
+✓ CURATOR · 24 cards · 24 controls · 0 hidden
+```
 
-## Important Notes For Next MCP
+## How To Verify
 
-1. Do not read or print `.env`; secrets may exist locally.
-2. Keep `public/data/catalog/tmdb-jiohotstar-catalog.json` content IDs in the `tmdb:movie:{id}` / `tmdb:show:{id}` format. Plain `tmdb:{id}` causes movie/show collisions in IndexedDB.
-3. If catalog count is below 5,752 in the app, use System Health -> `REBUILD LOCAL CATALOG` or clear IndexedDB.
-4. Do not reintroduce extension-only storage assumptions into the app. Web mode must work without `chrome.*` APIs.
-5. Keep the design monochrome/minimal unless the user requests another redesign.
-6. If the side panel works but page controls do not appear on JioHotstar, first verify the active URL is covered by `public/manifest.json` and that the page shows the `CURATOR CONNECTED` heartbeat after extension reload.
-7. If the page heartbeat is missing, use the `Page Bridge` health chip to confirm whether the content script is answering at all.
+```bash
+npm run verify   # Vitest suite + build + secret scan
+npm audit        # 0 vulnerabilities expected
+```
 
-## Remaining Work
+Expected: 39 tests passing, build passes, secret scan passes, 0 audit vulns.
 
-- Push this Session 5 state to GitHub after final verification.
-- Optional Vercel deploy setup.
-- Optional extension-to-hosted-app bridge with `externally_connectable`.
-- Optional Playwright browser smoke tests for tabs.
-- Optional smarter learning from `user_actions`.
+---
+
+## Important Notes For The Next Developer
+
+1. **Do not read/print `.env`** — local secrets may exist.
+2. **Content ID format is mandatory:** use `tmdb:movie:{id}` / `tmdb:show:{id}`. Plain `tmdb:{id}` causes IndexedDB primary key collisions between movies and shows sharing the same TMDB numeric ID.
+3. **Catalog count below 5,752?** Use System Health → `REBUILD LOCAL CATALOG` or clear IndexedDB in DevTools → Application.
+4. **Web mode must work without `chrome.*` APIs.** `storage.ts` has a localStorage fallback. Never add chrome-only calls outside `runtime.ts`-gated blocks.
+5. **Content script imports are restricted.** `content.ts` is built as a standalone IIFE via esbuild. It can only import from `./content-storage`, `./adapter`, `../shared/normalize`, and `../shared/types` (type-only). No Dexie, no npm packages.
+6. **Google Fonts (Inter) are loaded via CSS `@import`** — covered by the manifest CSP. Do not add other external font sources without updating the CSP.
+7. **TMDB session = `localStorage` only** — not available in the service worker background script. The background alarm only pings the active tab; the actual sync happens in the side panel.
+8. **Backup format is versioned.** `data-transfer.ts` validates `version: "1.0"`. If you add new fields to `StoredState`, bump the version and add a migration in `restoreBackup`.
+9. **Dexie schema migration:** incrementing `version()` in `db.ts` requires providing all previous table definitions too. Never skip version numbers.
+10. **Side panel auto-opens** on extension icon click (background.ts `action.onClicked`). If the popup is needed instead, remove that handler.
+
+---
+
+## Remaining / Optional Work
+
+| Item | Priority | Notes |
+|------|----------|-------|
+| Trakt.tv OAuth integration | Medium | Industry-standard media tracker API — would complement TMDB account sync |
+| Cloudflare Worker API proxy | Low | Optional: hides user's TMDB key from network inspector. Simple `fetch` relay worker. |
+| Playwright browser smoke tests | Low | E2E: load extension in Chrome, navigate to JioHotstar, verify heartbeat appears |
+| Vercel deployment | Low | `vercel.json` is ready, just needs a deploy trigger |
+| Chrome Web Store packaging | Medium | Needs: privacy policy, screenshots, store description. Icons already done. |
+| Live TMDB catalog refresh | Low | Replace static JSON build with periodic `fetch` from a hosted catalog endpoint |
+| `externally_connectable` bridge | Low | Let the hosted web app communicate directly with the extension via message passing |
+| Visual regression snapshots | Low | Lock in UI appearance with Playwright screenshots |

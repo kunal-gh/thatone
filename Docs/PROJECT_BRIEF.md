@@ -1,46 +1,44 @@
 # Project Brief
 
-## Product Goal
+**Project:** JioHotstar Curator
+**Version:** 1.2.0
+**Repository:** github.com/kunal-gh/thatone
+**Last Updated:** 2026-07-02
 
-Build a personal curation layer on top of JioHotstar that gives the user control over discovery without touching DRM, authentication, or private APIs.
+## Purpose
 
-## User Problems
+A professional Chrome MV3 extension that curates the JioHotstar streaming feed for a single user. It hides unwanted content, learns taste preferences from user actions, and surfaces personalized recommendations — all without a backend.
 
-1. Unwanted titles keep appearing on the homepage.
-2. Watched titles get recommended again.
-3. The default recommendation feed does not reflect personal taste.
-4. The user needs a cleaner and more intentional discovery flow.
+## Goals
 
-## MVP Goal
+- **Personal UX:** Show controls only on hover; collapse hidden cards smoothly with no blank spaces
+- **Taste learning:** Every action (hide, watched, save) updates a weighted taste graph across genre, actor, director, and language dimensions
+- **Recommendations:** Multi-signal scoring engine (embedding + taste + quality + mood + novelty + diversity + freshness)
+- **Account integration:** Import IMDb history via CSV; sync TMDB watchlist via OAuth
+- **Professional engineering:** Showcases TypeScript, React, Chrome MV3, Dexie, IIFE content scripts, structured logging, error boundaries, and glassmorphism design
 
-Ship a Chrome extension that can:
+## Non-Goals
 
-1. detect content cards on JioHotstar pages
-2. hide blocked titles
-3. track watched titles
-4. show a management UI for hidden/watched state
+- No backend infrastructure required (local-first)
+- No DRM bypass or stream URL access
+- No multi-user accounts or cloud sync (single-user, local data)
+- No real-time catalog scraping (static TMDB build at 5,752 titles)
 
-## Architectural Guardrails
+## Technical Highlights
 
-- Playback always happens on official JioHotstar pages.
-- No internal/private JioHotstar API becomes a dependency.
-- No cookies, tokens, or credentials are captured or transmitted.
-- Hard filters are deterministic and always happen before ranking.
-- Local-first storage is the default.
+| Area | Implementation |
+|------|---------------|
+| Extension | Chrome MV3 — side panel, service worker, IIFE content script |
+| UI | React 19 + dark glassmorphism CSS design system (Inter font) |
+| Database | Dexie v2 (IndexedDB) — 4 tables with proper migrations |
+| Build | Vite 7 (React app) + esbuild (standalone IIFE for content script) |
+| Testing | Vitest — 39 passing tests |
+| Security | User-provided API keys, CSP enforced, 0 npm audit vulns |
 
-## Phase Order
+## Status
 
-1. Extension MVP
-2. Extension-owned discovery app
-3. Import/export and resilience
-4. Catalog ingestion
-5. Recommendation V1
-6. Optional hosted sync/PWA
-7. Optional AI and advanced ML layers
-
-## Source Architecture
-
-Primary architecture document:
-
-- `Docs/revised_architecture_blueprint.md`
-
+Complete. All planned phases delivered:
+- ✅ Phase 1: Bug fixes (collapse animation, hover controls, real-time sync)
+- ✅ Phase 2: UI/UX overhaul (dark glassmorphism, poster images, swipe deck)
+- ✅ Phase 3: Account integration (IMDb CSV import, TMDB OAuth)
+- ✅ Phase 4: Professional hardening (error boundary, structured logger, icons, CSP, backup/restore)
