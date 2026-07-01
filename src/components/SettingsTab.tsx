@@ -3,6 +3,7 @@ import { processImdbImport, type ImdbImportResult, type ImdbRecord } from "../sh
 import { applyStoredAction, syncTasteGraphFromState } from "../shared/curation";
 import { getStoredState, getTasteGraph, setStoredState } from "../shared/storage";
 import { exportLogsAsJSON, getRecentLogs, setLogLevel, type LogLevel } from "../shared/logger";
+import { downloadBackup, restoreBackup, readFileAsText } from "../shared/data-transfer";
 import type { CatalogItem, StoredState, TasteGraph } from "../shared/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -471,12 +472,14 @@ function TmdbConnectionSection() {
 
 function DataManagementSection({ onMutation }: { onMutation: SettingsTabProps["onMutation"] }) {
   const [clearing, setClearing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState<{ ok: boolean; msg: string } | null>(null);
+  const restoreRef = useRef<HTMLInputElement>(null);
 
   const handleClearAll = async () => {
     if (!window.confirm("This will remove ALL your hidden, watched, and watchlist data. This cannot be undone. Continue?")) {
       return;
     }
-
     setClearing(true);
     try {
       await setStoredState({ items: {} });
@@ -488,6 +491,28 @@ function DataManagementSection({ onMutation }: { onMutation: SettingsTabProps["o
     }
   };
 
+  const handleRestore = async (file: File) => {
+    setRestoring(true);
+    setRestoreMsg(null);
+    try {
+      const text = await readFileAsText(file);
+      const result = await restoreBackup(text);
+      if (result.success) {
+        const state = await getStoredState();
+        const graph = await syncTasteGraphFromState(state);
+        await onMutation(state, graph);
+        setRestoreMsg({ ok: true, msg: `Restored ${result.itemsRestored} items and ${result.edgesRestored} taste signals` });
+      } else {
+        setRestoreMsg({ ok: false, msg: result.error ?? "Restore failed" });
+      }
+    } catch (err) {
+      setRestoreMsg({ ok: false, msg: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setRestoring(false);
+      if (restoreRef.current) restoreRef.current.value = "";
+    }
+  };
+
   return (
     <div className="settings-section">
       <div className="settings-section__header">
@@ -496,6 +521,52 @@ function DataManagementSection({ onMutation }: { onMutation: SettingsTabProps["o
         </h3>
       </div>
 
+      {/* Backup download */}
+      <div className="settings-row">
+        <div className="settings-row__info">
+          <strong>Export Backup</strong>
+          <span>Download all your hidden/watched/watchlist items and taste profile as JSON</span>
+        </div>
+        <button className="btn btn-ghost" onClick={() => void downloadBackup()}>
+          ↓ Download Backup
+        </button>
+      </div>
+
+      {/* Restore from backup */}
+      <div className="settings-row">
+        <div className="settings-row__info">
+          <strong>Import Backup</strong>
+          <span>Restore from a previously exported backup file</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {restoring && <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Restoring...</span>}
+          <button
+            className="btn btn-ghost"
+            onClick={() => restoreRef.current?.click()}
+            disabled={restoring}
+          >
+            ↑ Import Backup
+          </button>
+          <input
+            ref={restoreRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleRestore(file);
+            }}
+          />
+        </div>
+      </div>
+
+      {restoreMsg && (
+        <div className={`settings-feedback settings-feedback--${restoreMsg.ok ? "success" : "error"}`}>
+          {restoreMsg.ok ? "✓" : "✕"} {restoreMsg.msg}
+        </div>
+      )}
+
+      {/* Reset all data */}
       <div className="settings-row">
         <div className="settings-row__info">
           <strong>Reset All Data</strong>
