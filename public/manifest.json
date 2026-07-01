@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Personal JioHotstar Curator",
-  "description": "Hide unwanted titles, track watched content, get personal recommendations, and build a cleaner JioHotstar discovery flow.",
-  "version": "0.4.0",
+  "name": "JioHotstar Curator",
+  "description": "AI-powered content curation for JioHotstar. Hide unwanted titles, track watched content, get personalized recommendations, swipe through suggestions, and import your IMDb history.",
+  "version": "1.0.0",
   "permissions": ["storage", "tabs", "alarms", "sidePanel"],
   "host_permissions": [
     "https://hotstar.com/*",
@@ -15,9 +15,20 @@
     "service_worker": "extension/background.js",
     "type": "module"
   },
+  "icons": {
+    "16": "icons/icon16.svg",
+    "32": "icons/icon32.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  },
   "action": {
     "default_title": "JioHotstar Curator",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.svg",
+      "32": "icons/icon32.svg",
+      "48": "icons/icon48.svg"
+    }
   },
   "side_panel": {
     "default_path": "app.html"
@@ -35,11 +46,15 @@
       "run_at": "document_idle"
     }
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;"
+  },
   "web_accessible_resources": [
     {
       "resources": [
         "assets/*",
-        "data/catalog/*"
+        "data/catalog/*",
+        "icons/*"
       ],
       "matches": [
         "https://hotstar.com/*",

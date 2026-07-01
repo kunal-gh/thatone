@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.25)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#bg)"/>
+  <rect x="10" y="10" width="108" height="54" rx="26" fill="url(#shine)"/>
+  <text x="64" y="68" text-anchor="middle" dominant-baseline="central"
+        font-family="system-ui, -apple-system, sans-serif" font-weight="900"
+        font-size="70" fill="white" letter-spacing="-0.02em">C</text>
+</svg>

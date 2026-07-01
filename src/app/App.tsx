@@ -23,6 +23,8 @@ import {
 import { emptyTasteGraph } from "../shared/taste";
 import { PosterCard, PosterCardActions } from "../components/PosterCard";
 import { SwipeDeck } from "../components/SwipeDeck";
+import { SettingsTab } from "../components/SettingsTab";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import type {
   CatalogItem,
   ExplorationMode,
@@ -43,7 +45,8 @@ const TABS = [
   { id: "watch-later", label: "Watchlist", icon: "▸" },
   { id: "manage", label: "Library", icon: "▣" },
   { id: "taste", label: "Profile", icon: "◎" },
-  { id: "catalog", label: "System", icon: "⚙" }
+  { id: "catalog", label: "System", icon: "⚙" },
+  { id: "settings", label: "Settings", icon: "⚡" }
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -970,6 +973,8 @@ export function App() {
         return <TasteTab tasteGraph={tasteGraph} />;
       case "catalog":
         return <CatalogTab catalog={catalog} health={health} onResync={handleResync} recentActions={recentActions} />;
+      case "settings":
+        return <SettingsTab catalog={catalog} onMutation={handleMutation} />;
     }
   })();
 
@@ -1032,7 +1037,9 @@ export function App() {
       </nav>
 
       {/* Tab content */}
-      <main className="app-content">{tabContent}</main>
+      <main className="app-content">
+        <ErrorBoundary>{tabContent}</ErrorBoundary>
+      </main>
     </div>
   );
 }
