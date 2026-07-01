@@ -13,10 +13,10 @@ vite.config.js
 vite.config.d.ts
 
 # Local scratch folders from agents/tools
-.agents/
-.codex-analysis/
-initial ideas/
-data/
+/.agents/
+/.codex-analysis/
+/initial ideas/
+/data/
 
 # Local runtime logs
 logs/*.log
