@@ -1,14 +1,9 @@
 /**
  * content.ts — JioHotstar Curator content script
  *
- * This file MUST remain dependency-free from npm packages.
- * It only imports from:
- *   - ./content-storage  (zero-dep chrome.storage.local wrapper)
- *   - ./adapter          (zero-dep DOM helpers)
- *   - ../shared/normalize (pure string functions, no imports)
- *
- * It is built as a self-contained IIFE by scripts/build-content.mjs so
- * Chrome can inject it as a regular script with no ES module machinery.
+ * MUST remain dependency-free from npm packages.
+ * Built as a self-contained IIFE by scripts/build-content.mjs.
+ * Imports only from zero-dep local modules.
  */
 
 import { canonicalKeyFromTitle, canonicalKeyFromUrl } from "../shared/normalize";
@@ -18,32 +13,27 @@ import {
   removeStoredItem,
   upsertStoredItem
 } from "./content-storage";
-import type { StoredState } from "./content-storage";
-import type { ItemState } from "./content-storage";
+import type { ItemState, StoredState } from "./content-storage";
 import type { CandidateCard } from "../shared/types";
 import { findCandidateCards } from "./adapter";
 
-const CARD_MARKER = "data-curator-processed";
-const HIDDEN_MARKER = "data-curator-hidden";
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const CARD_MARKER    = "data-curator-processed";
+const HIDDEN_MARKER  = "data-curator-hidden";
 const ACTIONS_MARKER = "data-curator-actions";
-const STYLE_MARKER = "data-curator-style";
-const TOAST_ID = "curator-undo-toast";
-const STATUS_ID = "curator-page-status";
+const STYLE_MARKER   = "data-curator-style";
+const TOAST_ID       = "curator-undo-toast";
+const STATUS_ID      = "curator-page-status";
 const BOOTSTRAP_FLAG = "__jioHotstarCuratorBootstrapped";
 const PAGE_PING_TYPE = "CURATOR_PAGE_PING";
-const WARMUP_SCAN_LIMIT = 30;
+
+const WARMUP_SCAN_LIMIT       = 30;
 const WARMUP_SCAN_INTERVAL_MS = 1500;
+const COLLAPSE_DURATION_MS    = 350;
 
 let pendingScan = false;
 let lastDetectedCount = 0;
-
-type PagePingResponse = {
-  cards: number;
-  connected: boolean;
-  controls: number;
-  hidden: number;
-  url: string;
-};
 
 // ─── Injected Styles ──────────────────────────────────────────────────────────
 
@@ -53,63 +43,88 @@ function ensureInjectedStyles(): void {
   const style = document.createElement("style");
   style.id = STYLE_MARKER;
   style.textContent = `
+    /* ── Curator control overlay ── */
+
+    /* The control panel sits top-right of each card */
     [data-curator-root] {
       position: absolute;
-      top: 8px;
-      right: 8px;
+      top: 0;
+      left: 0;
+      right: 0;
       z-index: 9999;
       display: flex;
-      gap: 6px;
+      gap: 5px;
       align-items: center;
       flex-wrap: wrap;
-      max-width: calc(100% - 16px);
-      padding: 8px;
-      background: rgba(0,0,0,0.85);
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 8px;
-      backdrop-filter: blur(8px);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      padding: 8px 10px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0) 100%);
+      border-radius: 4px 4px 0 0;
+
+      /* HIDDEN by default — only reveal on hover */
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    /* Show controls when the user hovers the card */
+    [data-curator-processed="true"]:hover [data-curator-root] {
+      opacity: 1;
+      pointer-events: auto;
     }
 
     [data-curator-button] {
-      border: 1px solid rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.22);
       border-radius: 5px;
       padding: 5px 10px;
-      background: rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.10);
       color: #fff;
-      font: 700 11px/1 "Inter", Arial, sans-serif;
+      font: 700 11px/1 'Inter', system-ui, Arial, sans-serif;
       cursor: pointer;
       text-transform: uppercase;
       letter-spacing: 0.03em;
-      transition: background 0.15s;
+      backdrop-filter: blur(4px);
+      transition: background 0.15s, transform 0.1s;
     }
 
     [data-curator-button]:hover {
-      background: rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.28);
+      transform: translateY(-1px);
     }
 
-    [data-curator-button="hidden"]:hover    { background: rgba(239,68,68,0.5); }
-    [data-curator-button="watched"]:hover   { background: rgba(16,185,129,0.5); }
-    [data-curator-button="watch_later"]:hover { background: rgba(59,130,246,0.5); }
+    [data-curator-button="hidden"]:hover    { background: rgba(239,68,68,0.55); border-color: rgba(239,68,68,0.6); }
+    [data-curator-button="watched"]:hover   { background: rgba(16,185,129,0.55); border-color: rgba(16,185,129,0.6); }
+    [data-curator-button="watch_later"]:hover { background: rgba(59,130,246,0.55); border-color: rgba(59,130,246,0.6); }
 
     [data-curator-badge] {
       display: inline-flex;
       align-items: center;
       padding: 4px 8px;
-      border: 1px solid rgba(251,191,36,0.4);
+      border: 1px solid rgba(251,191,36,0.45);
       border-radius: 5px;
-      background: rgba(251,191,36,0.1);
+      background: rgba(0,0,0,0.5);
       color: #fbbf24;
-      font: 700 10px/1 "Inter", Arial, sans-serif;
+      font: 700 10px/1 'Inter', system-ui, Arial, sans-serif;
       text-transform: uppercase;
       white-space: nowrap;
+      backdrop-filter: blur(4px);
     }
 
+    /* ── Card collapse animation (hide-in-place, no blank gap) ── */
+    .curator-collapsing {
+      overflow: hidden !important;
+      transition:
+        max-height ${COLLAPSE_DURATION_MS}ms ease,
+        opacity    ${COLLAPSE_DURATION_MS * 0.8}ms ease,
+        margin     ${COLLAPSE_DURATION_MS}ms ease,
+        padding    ${COLLAPSE_DURATION_MS}ms ease !important;
+    }
+
+    /* ── Undo toast ── */
     #${TOAST_ID} {
       position: fixed;
-      bottom: 32px;
+      bottom: 60px;
       left: 50%;
-      transform: translateX(-50%) translateY(12px);
+      transform: translateX(-50%) translateY(16px);
       z-index: 2147483647;
       display: flex;
       align-items: center;
@@ -117,13 +132,14 @@ function ensureInjectedStyles(): void {
       padding: 12px 18px;
       background: rgba(10,10,20,0.92);
       border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 10px;
+      border-radius: 12px;
       color: #fff;
-      font: 500 13px/1 "Inter", Arial, sans-serif;
+      font: 500 13px/1 'Inter', system-ui, Arial, sans-serif;
       box-shadow: 0 8px 32px rgba(0,0,0,0.5);
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.2s, transform 0.2s;
+      transition: opacity 0.22s, transform 0.22s;
+      backdrop-filter: blur(12px);
     }
 
     #${TOAST_ID}.show {
@@ -133,19 +149,19 @@ function ensureInjectedStyles(): void {
     }
 
     #${TOAST_ID} button {
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 5px;
-      background: transparent;
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
       color: #fff;
-      padding: 5px 10px;
-      font: 700 11px/1 "Inter", Arial, sans-serif;
+      padding: 5px 12px;
+      font: 700 11px/1 'Inter', system-ui, Arial, sans-serif;
       cursor: pointer;
+      transition: background 0.15s;
     }
 
-    #${TOAST_ID} button:hover {
-      background: rgba(255,255,255,0.12);
-    }
+    #${TOAST_ID} button:hover { background: rgba(255,255,255,0.18); }
 
+    /* ── Status heartbeat pill ── */
     #${STATUS_ID} {
       position: fixed;
       left: 16px;
@@ -153,21 +169,32 @@ function ensureInjectedStyles(): void {
       z-index: 2147483647;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      max-width: calc(100vw - 32px);
-      padding: 8px 12px;
-      background: rgba(0,0,0,0.82);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 8px;
-      color: #a3e635;
-      font: 700 11px/1 "Inter", Arial, sans-serif;
+      gap: 7px;
+      padding: 7px 12px;
+      background: rgba(7,8,15,0.88);
+      border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 20px;
+      color: #a5f3fc;
+      font: 700 11px/1 'Inter', system-ui, Arial, sans-serif;
       letter-spacing: 0.03em;
-      backdrop-filter: blur(6px);
+      backdrop-filter: blur(8px);
       pointer-events: none;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.15);
     }
 
-    #${STATUS_ID}[data-state="scanning"] {
-      color: #94a3b8;
+    #${STATUS_ID}::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #34d399;
+      box-shadow: 0 0 6px #34d399;
+      flex-shrink: 0;
+    }
+
+    #${STATUS_ID}[data-state="scanning"]::before {
+      background: #fbbf24;
+      box-shadow: 0 0 6px #fbbf24;
     }
   `;
 
@@ -182,52 +209,87 @@ function ensurePageStatus(): HTMLElement {
     status = document.createElement("div");
     status.id = STATUS_ID;
     status.setAttribute("data-state", "scanning");
-    status.textContent = "CURATOR CONNECTED";
+    status.textContent = "CURATOR · scanning…";
     document.body.appendChild(status);
   }
-
   return status;
 }
 
-function updatePageStatus(detectedCount = lastDetectedCount): void {
-  lastDetectedCount = Math.max(lastDetectedCount, detectedCount);
+function updatePageStatus(): void {
+  const processed = document.querySelectorAll(`[${CARD_MARKER}="true"]`).length;
+  const controls  = document.querySelectorAll(`[${ACTIONS_MARKER}="true"]`).length;
+  const hidden    = document.querySelectorAll(`[${HIDDEN_MARKER}="true"]`).length;
+  const count     = Math.max(lastDetectedCount, processed);
 
   const status = ensurePageStatus();
-  const processed = document.querySelectorAll(`[${CARD_MARKER}="true"]`).length;
-  const controls = document.querySelectorAll(`[${ACTIONS_MARKER}="true"]`).length;
-  const hidden = document.querySelectorAll(`[${HIDDEN_MARKER}="true"]`).length;
-  const visibleCount = Math.max(lastDetectedCount, processed);
-
-  status.setAttribute("data-state", visibleCount > 0 ? "ready" : "scanning");
-  status.textContent =
-    visibleCount > 0
-      ? `✓ CURATOR · ${visibleCount} cards · ${controls} controls · ${hidden} hidden`
-      : "✓ CURATOR · scanning…";
+  status.setAttribute("data-state", count > 0 ? "ready" : "scanning");
+  status.textContent = count > 0
+    ? `✓ CURATOR · ${count} cards · ${controls} controls · ${hidden} hidden`
+    : "✓ CURATOR · scanning…";
 }
 
-function getPagePingResponse(): PagePingResponse {
+function getPagePingResponse() {
   return {
-    cards: Math.max(lastDetectedCount, document.querySelectorAll(`[${CARD_MARKER}="true"]`).length),
+    cards:     Math.max(lastDetectedCount, document.querySelectorAll(`[${CARD_MARKER}="true"]`).length),
     connected: Boolean(document.getElementById(STATUS_ID)),
-    controls: document.querySelectorAll(`[${ACTIONS_MARKER}="true"]`).length,
-    hidden: document.querySelectorAll(`[${HIDDEN_MARKER}="true"]`).length,
-    url: window.location.href
+    controls:  document.querySelectorAll(`[${ACTIONS_MARKER}="true"]`).length,
+    hidden:    document.querySelectorAll(`[${HIDDEN_MARKER}="true"]`).length,
+    url:       window.location.href
   };
 }
 
-// ─── Card visibility ───────────────────────────────────────────────────────────
+// ─── Card collapse (no blank gaps) ────────────────────────────────────────────
+
+/**
+ * Collapses a card element smoothly without leaving a blank space.
+ * Uses max-height / opacity / margin transition, then sets display:none.
+ */
+function collapseCard(el: HTMLElement): void {
+  if (el.getAttribute(HIDDEN_MARKER) === "true") return;
+
+  el.setAttribute(HIDDEN_MARKER, "true");
+
+  // Snapshot current height so transition works from explicit value → 0
+  const currentHeight = el.getBoundingClientRect().height;
+  el.style.maxHeight  = `${currentHeight}px`;
+  el.style.opacity    = "1";
+
+  // Force reflow before starting transition
+  void el.offsetHeight;
+
+  el.classList.add("curator-collapsing");
+  el.style.maxHeight  = "0px";
+  el.style.opacity    = "0";
+  el.style.marginTop  = "0";
+  el.style.marginBottom = "0";
+  el.style.paddingTop = "0";
+  el.style.paddingBottom = "0";
+
+  window.setTimeout(() => {
+    el.style.display = "none";
+    el.classList.remove("curator-collapsing");
+  }, COLLAPSE_DURATION_MS + 20);
+}
+
+function revealCard(el: HTMLElement): void {
+  el.removeAttribute(HIDDEN_MARKER);
+  el.style.display = "";
+  el.style.maxHeight = "";
+  el.style.opacity = "";
+  el.style.marginTop = "";
+  el.style.marginBottom = "";
+  el.style.paddingTop = "";
+  el.style.paddingBottom = "";
+  el.classList.remove("curator-collapsing");
+}
+
+// ─── State lookup ──────────────────────────────────────────────────────────────
 
 function shouldHide(card: CandidateCard, state: StoredState): boolean {
   const titleKey = canonicalKeyFromTitle(card.title);
-  const urlKey = card.url ? canonicalKeyFromUrl(card.url) : null;
-  const item = (urlKey ? state.items[urlKey] : undefined) ?? state.items[titleKey];
+  const urlKey   = card.url ? canonicalKeyFromUrl(card.url) : null;
+  const item     = (urlKey ? state.items[urlKey] : undefined) ?? state.items[titleKey];
   return item?.state === "hidden" || item?.state === "watched";
-}
-
-function hideCard(card: CandidateCard): void {
-  if (card.element.getAttribute(HIDDEN_MARKER) === "true") return;
-  card.element.style.display = "none";
-  card.element.setAttribute(HIDDEN_MARKER, "true");
 }
 
 // ─── Action persistence ────────────────────────────────────────────────────────
@@ -236,37 +298,26 @@ let lastAction: { card: CandidateCard; previousState: ItemState | null } | null 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 function syncTasteGraph(): void {
-  try {
-    chrome.runtime.sendMessage({ type: "SYNC_TASTE_GRAPH" });
-  } catch {
-    // Extension context may not be available.
-  }
+  try { chrome.runtime.sendMessage({ type: "SYNC_TASTE_GRAPH" }); } catch { /* ignore */ }
 }
 
-async function persistCardState(
-  card: CandidateCard,
-  state: ItemState,
-  previousState: ItemState | null
-): Promise<void> {
+async function persistCardState(card: CandidateCard, state: ItemState, previousState: ItemState | null): Promise<void> {
   lastAction = { card, previousState };
 
   const titleKey = canonicalKeyFromTitle(card.title);
-  const urlKey = card.url ? canonicalKeyFromUrl(card.url) : null;
+  const urlKey   = card.url ? canonicalKeyFromUrl(card.url) : null;
 
   await upsertStoredItem(titleKey, card.title, state, card.url);
   if (urlKey && urlKey !== titleKey) {
     await upsertStoredItem(urlKey, card.title, state, card.url);
   }
 
-  const actionType = state === "hidden" ? "hide" : state === "watched" ? "watched" : "watch_later";
-  logUserAction(actionType, card.title, {
+  logUserAction(state === "hidden" ? "hide" : state === "watched" ? "watched" : "watch_later", card.title, {
     source_url: card.url,
     context: "homepage"
   });
 
-  if (state !== "watch_later") {
-    syncTasteGraph();
-  }
+  if (state !== "watch_later") syncTasteGraph();
 }
 
 async function undoLastAction(): Promise<void> {
@@ -275,43 +326,26 @@ async function undoLastAction(): Promise<void> {
   lastAction = null;
 
   const titleKey = canonicalKeyFromTitle(card.title);
-  const urlKey = card.url ? canonicalKeyFromUrl(card.url) : null;
+  const urlKey   = card.url ? canonicalKeyFromUrl(card.url) : null;
 
   if (previousState === null) {
     await removeStoredItem(titleKey);
-    if (urlKey && urlKey !== titleKey) {
-      await removeStoredItem(urlKey);
-    }
+    if (urlKey && urlKey !== titleKey) await removeStoredItem(urlKey);
   } else {
     await upsertStoredItem(titleKey, card.title, previousState, card.url);
-    if (urlKey && urlKey !== titleKey) {
-      await upsertStoredItem(urlKey, card.title, previousState, card.url);
-    }
+    if (urlKey && urlKey !== titleKey) await upsertStoredItem(urlKey, card.title, previousState, card.url);
   }
 
-  card.element.style.display = "";
-  card.element.removeAttribute(HIDDEN_MARKER);
-
-  logUserAction("unhide", card.title, {
-    source_url: card.url,
-    context: "homepage"
-  });
-
+  revealCard(card.element);
+  logUserAction("unhide", card.title, { source_url: card.url, context: "homepage" });
   syncTasteGraph();
 }
 
-// ─── Undo toast ────────────────────────────────────────────────────────────────
+// ─── Toast ─────────────────────────────────────────────────────────────────────
 
 function dismissToast(): void {
-  const toast = document.getElementById(TOAST_ID);
-  if (toast) {
-    toast.classList.remove("show");
-  }
-
-  if (toastTimer) {
-    clearTimeout(toastTimer);
-    toastTimer = null;
-  }
+  document.getElementById(TOAST_ID)?.classList.remove("show");
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
 }
 
 function showUndoToast(action: ItemState): void {
@@ -322,13 +356,7 @@ function showUndoToast(action: ItemState): void {
     document.body.appendChild(toast);
   }
 
-  const label =
-    action === "hidden"
-      ? "Hidden"
-      : action === "watched"
-        ? "Marked watched"
-        : "Saved for later";
-
+  const label = action === "hidden" ? "Hidden" : action === "watched" ? "Marked watched" : "Saved for later";
   toast.innerHTML = `<span>${label}</span><button id="curator-undo-btn">Undo</button>`;
   toast.classList.add("show");
 
@@ -337,88 +365,72 @@ function showUndoToast(action: ItemState): void {
     dismissToast();
   });
 
-  if (toastTimer) {
-    clearTimeout(toastTimer);
-  }
-
+  if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(dismissToast, 5000);
 }
 
 // ─── Card action injection ─────────────────────────────────────────────────────
 
-function ensureCardIsPositionable(cardElement: HTMLElement): void {
-  if (window.getComputedStyle(cardElement).position === "static") {
-    cardElement.style.position = "relative";
-  }
+function ensurePositionable(el: HTMLElement): void {
+  if (window.getComputedStyle(el).position === "static") el.style.position = "relative";
 }
 
-function getCatalogRating(card: CandidateCard): Promise<number | null> {
+function getRating(card: CandidateCard): Promise<number | null> {
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendMessage(
         { type: "FETCH_CARD_META", payload: { title: card.title, url: card.url } },
         (response) => resolve(response?.rating ?? null)
       );
-    } catch {
-      resolve(null);
-    }
+    } catch { resolve(null); }
   });
 }
 
 async function injectActions(card: CandidateCard): Promise<void> {
   if (card.element.querySelector(`[${ACTIONS_MARKER}]`)) return;
 
-  ensureCardIsPositionable(card.element);
+  ensurePositionable(card.element);
 
   const root = document.createElement("div");
   root.setAttribute("data-curator-root", "true");
   root.setAttribute(ACTIONS_MARKER, "true");
 
+  // Rating badge — initially "..." then filled async
   const badge = document.createElement("span");
   badge.setAttribute("data-curator-badge", "true");
   badge.textContent = "★…";
   root.appendChild(badge);
 
-  void getCatalogRating(card).then((rating) => {
-    if (rating === null) {
-      badge.style.display = "none";
-      return;
-    }
-
+  void getRating(card).then((rating) => {
+    if (rating === null) { badge.style.display = "none"; return; }
     badge.textContent = `★ ${rating.toFixed(1)}`;
   });
 
+  // Get current state for undo support
   const currentState = await getStoredState();
-  const titleKey = canonicalKeyFromTitle(card.title);
-  const urlKey = card.url ? canonicalKeyFromUrl(card.url) : null;
-  const existing = (urlKey ? currentState.items[urlKey] : undefined) ?? currentState.items[titleKey] ?? null;
+  const titleKey     = canonicalKeyFromTitle(card.title);
+  const urlKey       = card.url ? canonicalKeyFromUrl(card.url) : null;
+  const existing     = (urlKey ? currentState.items[urlKey] : undefined) ?? currentState.items[titleKey] ?? null;
   const previousState = existing?.state ?? null;
 
   const makeButton = (label: string, state: ItemState) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = label;
-    button.setAttribute("data-curator-button", state);
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.setAttribute("data-curator-button", state);
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       void persistCardState(card, state, previousState).then(() => {
-        if (state === "hidden" || state === "watched") {
-          hideCard(card);
-        }
+        if (state === "hidden" || state === "watched") collapseCard(card.element);
         showUndoToast(state);
+        updatePageStatus();
       });
     });
-    return button;
+    return btn;
   };
 
-  root.append(
-    makeButton("Hide", "hidden"),
-    makeButton("Watched", "watched"),
-    makeButton("Later", "watch_later")
-  );
-
+  root.append(makeButton("Hide", "hidden"), makeButton("Watched", "watched"), makeButton("Later", "watch_later"));
   card.element.appendChild(root);
   updatePageStatus();
 }
@@ -428,42 +440,59 @@ async function injectActions(card: CandidateCard): Promise<void> {
 async function processDocument(root: ParentNode = document): Promise<void> {
   const state = await getStoredState();
   const cards = findCandidateCards(root);
-  updatePageStatus(cards.length);
+
+  if (cards.length > 0) lastDetectedCount = Math.max(lastDetectedCount, cards.length);
+  updatePageStatus();
 
   for (const card of cards) {
     if (card.element.getAttribute(CARD_MARKER) === "true") continue;
     card.element.setAttribute(CARD_MARKER, "true");
 
     if (shouldHide(card, state)) {
-      hideCard(card);
+      collapseCard(card.element);
       continue;
     }
 
     void injectActions(card);
   }
 
-  updatePageStatus(cards.length);
+  updatePageStatus();
 }
 
-function scheduleProcessDocument(delayMs = 180): void {
+function scheduleProcessDocument(delayMs = 200): void {
   if (pendingScan) return;
-
   pendingScan = true;
-  window.setTimeout(() => {
-    pendingScan = false;
-    void processDocument(document);
-  }, delayMs);
+  window.setTimeout(() => { pendingScan = false; void processDocument(); }, delayMs);
 }
+
+// ─── Real-time sync from side panel ───────────────────────────────────────────
+
+/**
+ * When the user takes an action in the side panel (hide/unhide from the app),
+ * re-process the page immediately so the card state reflects the change
+ * without needing a manual page refresh.
+ */
+function listenForStorageChanges(): void {
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes["curatorState"]) return;
+      // Small debounce — storage can fire multiple events for one action
+      scheduleProcessDocument(300);
+    });
+  } catch {
+    // Ignore if storage API not available
+  }
+}
+
+// ─── MutationObserver & SPA support ───────────────────────────────────────────
 
 function startObserver(): void {
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
-        if (node.id === STATUS_ID || node.closest(`[data-curator-root], #${TOAST_ID}, #${STATUS_ID}`)) {
-          continue;
-        }
-
+        if (node.id === STATUS_ID || node.id === TOAST_ID) continue;
+        if (node.closest(`[data-curator-root], #${TOAST_ID}, #${STATUS_ID}`)) continue;
         scheduleProcessDocument();
       }
     }
@@ -477,34 +506,28 @@ function startWarmupScans(): void {
   const interval = window.setInterval(() => {
     scanCount += 1;
     scheduleProcessDocument();
-
-    if (scanCount >= WARMUP_SCAN_LIMIT) {
-      window.clearInterval(interval);
-    }
+    if (scanCount >= WARMUP_SCAN_LIMIT) window.clearInterval(interval);
   }, WARMUP_SCAN_INTERVAL_MS);
 }
 
-function watchSinglePageNavigation(): void {
+function watchSPANavigation(): void {
   let lastHref = window.location.href;
   window.setInterval(() => {
     if (lastHref === window.location.href) return;
-
     lastHref = window.location.href;
-    scheduleProcessDocument(250);
+    lastDetectedCount = 0; // reset count on page change
+    scheduleProcessDocument(300);
   }, 1000);
 
-  window.addEventListener("focus", () => scheduleProcessDocument());
+  window.addEventListener("focus",      () => scheduleProcessDocument());
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      scheduleProcessDocument();
-    }
+    if (document.visibilityState === "visible") scheduleProcessDocument();
   });
 }
 
 function listenForPagePing(): void {
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type !== PAGE_PING_TYPE) return;
-
     sendResponse(getPagePingResponse());
     return false;
   });
@@ -513,17 +536,20 @@ function listenForPagePing(): void {
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 async function bootstrap(): Promise<void> {
-  const windowState = window as unknown as Record<string, boolean>;
-  if (windowState[BOOTSTRAP_FLAG]) return;
-  windowState[BOOTSTRAP_FLAG] = true;
+  const win = window as unknown as Record<string, boolean>;
+  if (win[BOOTSTRAP_FLAG]) return;
+  win[BOOTSTRAP_FLAG] = true;
 
   ensureInjectedStyles();
   ensurePageStatus();
   listenForPagePing();
+  listenForStorageChanges();
+
   await processDocument(document);
+
   startObserver();
   startWarmupScans();
-  watchSinglePageNavigation();
+  watchSPANavigation();
 }
 
 if (document.readyState === "loading") {

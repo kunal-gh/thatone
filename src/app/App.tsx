@@ -21,9 +21,12 @@ import {
   subscribeToTasteGraph
 } from "../shared/storage";
 import { emptyTasteGraph } from "../shared/taste";
+import { PosterCard, PosterCardActions } from "../components/PosterCard";
+import { SwipeDeck } from "../components/SwipeDeck";
 import type {
   CatalogItem,
   ExplorationMode,
+  ItemState,
   RecommendationResult,
   StoredItem,
   StoredState,
@@ -32,13 +35,15 @@ import type {
   UserAction
 } from "../shared/types";
 
+// ─── Constants ─────────────────────────────────────────────────────────────────
+
 const TABS = [
-  { id: "recommendations", label: "Recommendations" },
-  { id: "swipe", label: "Swipe Deck" },
-  { id: "manage", label: "Manage" },
-  { id: "watch-later", label: "Watch Later" },
-  { id: "taste", label: "Taste Graph" },
-  { id: "catalog", label: "System Health" }
+  { id: "recommendations", label: "Discover", icon: "✦" },
+  { id: "swipe", label: "Swipe", icon: "◈" },
+  { id: "watch-later", label: "Watchlist", icon: "▸" },
+  { id: "manage", label: "Library", icon: "▣" },
+  { id: "taste", label: "Profile", icon: "◎" },
+  { id: "catalog", label: "System", icon: "⚙" }
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -56,6 +61,8 @@ type PageBridgeState = {
   details: string;
 };
 
+// ─── Utility helpers ───────────────────────────────────────────────────────────
+
 function sortByUpdatedAt(items: StoredItem[]): StoredItem[] {
   return [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -69,51 +76,75 @@ function formatDate(value: string | null | undefined): string {
   }
 }
 
-function compactList(values: string[], max = 4): string {
-  const visible = values.filter(Boolean).slice(0, max);
-  return visible.length > 0 ? visible.join(" / ") : "No tags";
-}
-
-function scoreLabel(score: number): string {
-  if (score >= 0.75) return "Strong";
-  if (score >= 0.55) return "Good";
-  return "Exploratory";
+function relativeTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "never";
+  try {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  } catch {
+    return dateStr;
+  }
 }
 
 function edgeMagnitude(edge: TasteEdge): number {
   return Math.min(100, Math.round(Math.abs(edge.weight) * 100));
 }
 
-function EmptyState({ children }: { children: React.ReactNode }) {
-  return <div className="empty-state">{children}</div>;
+// ─── Shared sub-components ─────────────────────────────────────────────────────
+
+function EmptyState({ children, icon = "🎬" }: { children: React.ReactNode; icon?: string }) {
+  return (
+    <div className="empty-state">
+      <div className="empty-state__icon">{icon}</div>
+      <p className="empty-state__text">{children}</p>
+    </div>
+  );
 }
 
 function StatTile({
   label,
   value,
-  hint
+  icon,
+  hint,
+  variant
 }: {
-  hint?: string;
   label: string;
   value: string | number;
+  icon?: string;
+  hint?: string;
+  variant?: "default" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <div className="stat-tile">
-      <span className="stat-label">{label}</span>
-      <strong className="stat-value">{value}</strong>
-      {hint ? <span className="stat-hint">{hint}</span> : null}
+    <div className={`stat-tile ${variant ? `stat-tile--${variant}` : ""}`}>
+      {icon && <span className="stat-tile__icon">{icon}</span>}
+      <strong className="stat-tile__value">{value}</strong>
+      <span className="stat-tile__label">{label}</span>
+      {hint && <span className="stat-tile__hint">{hint}</span>}
     </div>
   );
 }
 
 function ScoreRow({ label, value }: { label: string; value: number }) {
+  const pct = Math.round(value * 100);
   return (
     <div className="score-row">
-      <span>{label}</span>
-      <div className="score-track">
-        <div className="score-fill" style={{ width: `${Math.round(value * 100)}%` }} />
+      <span className="score-row__label">{label}</span>
+      <div className="score-row__track">
+        <div
+          className="score-row__fill"
+          style={{
+            width: `${pct}%`,
+            background: pct > 70 ? "var(--success)" : pct > 40 ? "var(--accent)" : "var(--text-muted)"
+          }}
+        />
       </div>
-      <strong>{Math.round(value * 100)}%</strong>
+      <strong className="score-row__value">{pct}%</strong>
     </div>
   );
 }
@@ -134,103 +165,28 @@ function HealthStrip({
   storageProvider: string;
 }) {
   const items = [
-    { label: "Runtime", value: runtime },
-    { label: "Storage", value: storageProvider },
-    { label: "Catalog", value: `${catalogCount.toLocaleString()} titles` },
-    { label: "Database", value: dbStatus },
-    { label: "Page Bridge", value: `${pageBridge.status} / ${pageBridge.details}` },
-    { label: "Active Tab", value: pageBridge.activeTabLabel },
-    { label: "Action Log", value: actionCount.toLocaleString() },
-    { label: "Backend", value: "Not required" }
+    { label: "Runtime", value: runtime, status: "ok" as const },
+    { label: "Storage", value: storageProvider, status: "ok" as const },
+    { label: "Catalog", value: `${catalogCount.toLocaleString()}`, status: catalogCount > 0 ? "ok" as const : "warn" as const },
+    { label: "Database", value: dbStatus, status: dbStatus === "ready" ? "ok" as const : "warn" as const },
+    { label: "Bridge", value: pageBridge.status, status: pageBridge.status === "connected" ? "ok" as const : "off" as const },
+    { label: "Actions", value: actionCount.toLocaleString(), status: "ok" as const }
   ];
 
   return (
     <div className="health-strip">
       {items.map((item) => (
-        <div key={item.label} className="health-chip">
-          <span>{item.label}</span>
-          <strong>{item.value}</strong>
+        <div key={item.label} className={`health-chip health-chip--${item.status}`}>
+          <span className="health-chip__dot" />
+          <span className="health-chip__label">{item.label}</span>
+          <strong className="health-chip__value">{item.value}</strong>
         </div>
       ))}
     </div>
   );
 }
 
-function RecommendationCard({
-  onAction,
-  result
-}: {
-  onAction: (item: CatalogItem, state: "hidden" | "watched" | "watch_later") => Promise<void>;
-  result: RecommendationResult;
-}) {
-  const { breakdown, item, score } = result;
-  const [detailsOpen, setDetailsOpen] = useState(false);
-
-  return (
-    <article className="record-card">
-      <div className="record-head">
-        <div>
-          <h3 className="record-title">{item.title}</h3>
-          <p className="record-meta">
-            {item.year ?? "Unknown year"} / {item.type.toUpperCase()} / {item.language?.toUpperCase() ?? "NA"}
-          </p>
-        </div>
-        <div className="record-score">
-          <strong>{Math.round(score * 100)}%</strong>
-          <span>{scoreLabel(score)}</span>
-        </div>
-      </div>
-
-      <p className="record-summary">
-        {item.overview?.slice(0, 220) ?? "No overview available yet."}
-      </p>
-
-      <div className="tag-row">
-        {item.genres.slice(0, 5).map((genre) => (
-          <span key={genre} className="tag">
-            {genre}
-          </span>
-        ))}
-      </div>
-
-      <div className="action-row">
-        {item.jiohotstar_url ? (
-          <a className="button button-solid" href={item.jiohotstar_url} rel="noreferrer" target="_blank">
-            OPEN TITLE
-          </a>
-        ) : null}
-        <button className="button" onClick={() => void onAction(item, "watch_later")} type="button">
-          LATER
-        </button>
-        <button className="button" onClick={() => void onAction(item, "watched")} type="button">
-          WATCHED
-        </button>
-        <button className="button" onClick={() => void onAction(item, "hidden")} type="button">
-          HIDE
-        </button>
-        <button className="button button-ghost" onClick={() => setDetailsOpen((value) => !value)} type="button">
-          {detailsOpen ? "HIDE SCORE" : "SHOW SCORE"}
-        </button>
-      </div>
-
-      {detailsOpen ? (
-        <div className="detail-panel">
-          <ScoreRow label="Embedding" value={breakdown.embedding_relevance} />
-          <ScoreRow label="Taste graph" value={breakdown.taste_graph_match} />
-          <ScoreRow label="Quality" value={breakdown.quality_signal} />
-          <ScoreRow label="Mood" value={breakdown.mood_fit} />
-          <ScoreRow label="Novelty" value={breakdown.novelty} />
-          <ScoreRow label="Freshness" value={breakdown.freshness} />
-          <ScoreRow label="Diversity" value={breakdown.diversity_score} />
-          <div className="detail-foot">
-            <span>Penalty</span>
-            <strong>{Math.round(breakdown.penalties * 100)}%</strong>
-          </div>
-        </div>
-      ) : null}
-    </article>
-  );
-}
+// ─── Recommendations Tab ───────────────────────────────────────────────────────
 
 function RecommendationsTab({
   catalog,
@@ -239,7 +195,7 @@ function RecommendationsTab({
   tasteGraph
 }: {
   catalog: CatalogItem[];
-  onAction: (item: CatalogItem, state: "hidden" | "watched" | "watch_later") => Promise<void>;
+  onAction: (item: CatalogItem, state: ItemState) => Promise<void>;
   state: StoredState;
   tasteGraph: TasteGraph;
 }) {
@@ -260,30 +216,31 @@ function RecommendationsTab({
   }, [catalog, contentType, mode, mood, state, tasteGraph]);
 
   return (
-    <section className="stack">
+    <section className="tab-content animate-fadeIn">
+      {/* Filters toolbar */}
       <div className="toolbar">
-        <div className="button-group">
+        <div className="toolbar__group">
           {(["comfort", "balanced", "surprise"] as ExplorationMode[]).map((option) => (
             <button
               key={option}
-              className={`button ${mode === option ? "button-solid" : ""}`}
+              className={`btn ${mode === option ? "btn-primary" : "btn-ghost"}`}
               onClick={() => setMode(option)}
               type="button"
             >
-              {option.toUpperCase()}
+              {option.charAt(0).toUpperCase() + option.slice(1)}
             </button>
           ))}
         </div>
 
-        <div className="button-group">
+        <div className="toolbar__group">
           {(["all", "movie", "show"] as const).map((option) => (
             <button
               key={option}
-              className={`button ${contentType === option ? "button-solid" : ""}`}
+              className={`btn ${contentType === option ? "btn-primary" : "btn-ghost"}`}
               onClick={() => setContentType(option)}
               type="button"
             >
-              {option === "all" ? "ALL" : option.toUpperCase()}
+              {option === "all" ? "All" : option === "movie" ? "Movies" : "Shows"}
             </button>
           ))}
         </div>
@@ -291,27 +248,33 @@ function RecommendationsTab({
         <input
           className="text-input"
           onChange={(event) => setMood(event.target.value)}
-          placeholder="Mood or theme"
+          placeholder="Search by mood or theme..."
           type="text"
           value={mood}
         />
       </div>
 
-      <div className="section-header">
-        <p>
-          {results.length} ranked titles from {catalog.length.toLocaleString()} catalog entries.
-        </p>
-        <p>
-          {uniqueItems.filter((item) => item.state === "hidden").length} hidden / {uniqueItems.filter((item) => item.state === "watched").length} watched excluded.
-        </p>
+      {/* Stats summary */}
+      <div className="section-meta">
+        <span>{results.length} titles</span>
+        <span className="section-meta__divider">·</span>
+        <span>{uniqueItems.filter((i) => i.state === "hidden").length} hidden</span>
+        <span className="section-meta__divider">·</span>
+        <span>{uniqueItems.filter((i) => i.state === "watched").length} watched</span>
       </div>
 
       {results.length === 0 ? (
-        <EmptyState>No recommendations yet. Use Hide or Watched to build a stronger profile.</EmptyState>
+        <EmptyState icon="🎯">
+          No recommendations yet. Use Hide or Watched on JioHotstar to build your taste profile.
+        </EmptyState>
       ) : (
-        <div className="record-grid">
+        <div className="poster-grid">
           {results.map((result) => (
-            <RecommendationCard key={result.item.content_id} onAction={onAction} result={result} />
+            <RecommendationPosterCard
+              key={result.item.content_id}
+              onAction={onAction}
+              result={result}
+            />
           ))}
         </div>
       )}
@@ -319,14 +282,116 @@ function RecommendationsTab({
   );
 }
 
+function RecommendationPosterCard({
+  onAction,
+  result
+}: {
+  onAction: (item: CatalogItem, state: ItemState) => Promise<void>;
+  result: RecommendationResult;
+}) {
+  const { item, score, breakdown } = result;
+  const [showDetails, setShowDetails] = useState(false);
+  const scorePercent = Math.round(score * 100);
+
+  return (
+    <div className="poster-card-wrap">
+      <PosterCard
+        item={item}
+        score={scorePercent}
+        actions={
+          <PosterCardActions
+            onOpen={item.jiohotstar_url ? () => window.open(item.jiohotstar_url!, "_blank") : undefined}
+            onLater={() => void onAction(item, "watch_later")}
+            onWatched={() => void onAction(item, "watched")}
+            onHide={() => void onAction(item, "hidden")}
+          />
+        }
+      />
+      <button
+        className="btn btn-ghost btn-xs poster-detail-toggle"
+        onClick={() => setShowDetails((v) => !v)}
+        type="button"
+      >
+        {showDetails ? "Hide Score" : "Score Details"}
+      </button>
+      {showDetails && (
+        <div className="detail-panel animate-fadeIn">
+          <ScoreRow label="Embedding" value={breakdown.embedding_relevance} />
+          <ScoreRow label="Taste Graph" value={breakdown.taste_graph_match} />
+          <ScoreRow label="Quality" value={breakdown.quality_signal} />
+          <ScoreRow label="Mood" value={breakdown.mood_fit} />
+          <ScoreRow label="Novelty" value={breakdown.novelty} />
+          <ScoreRow label="Freshness" value={breakdown.freshness} />
+          <ScoreRow label="Diversity" value={breakdown.diversity_score} />
+          <div className="detail-panel__footer">
+            <span>Penalty</span>
+            <strong>{Math.round(breakdown.penalties * 100)}%</strong>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Swipe Deck Tab ────────────────────────────────────────────────────────────
+
+function SwipeDeckTab({
+  catalog,
+  onMutation,
+  state,
+  tasteGraph
+}: {
+  catalog: CatalogItem[];
+  onMutation: (state: StoredState, tasteGraph: TasteGraph) => Promise<void>;
+  state: StoredState;
+  tasteGraph: TasteGraph;
+}) {
+  const deck = useMemo(
+    () =>
+      getRecommendations(catalog, state, tasteGraph, {
+        exploration_mode: "balanced",
+        max_results: 40
+      }).map((entry) => entry.item),
+    [catalog, state, tasteGraph]
+  );
+
+  const handleAction = useCallback(async (item: CatalogItem, action: ItemState) => {
+    const result = await applyCatalogAction(item, action, "swipe_deck");
+    await onMutation(result.state, result.tasteGraph);
+  }, [onMutation]);
+
+  const handleSkip = useCallback(async (item: CatalogItem) => {
+    await logUserAction("skipped", item.title, {
+      content_id: item.content_id,
+      source_url: item.jiohotstar_url,
+      context: "swipe_deck"
+    });
+  }, []);
+
+  return (
+    <section className="tab-content animate-fadeIn">
+      <SwipeDeck items={deck} onAction={handleAction} onSkip={handleSkip} />
+    </section>
+  );
+}
+
+// ─── Watch Later Tab ───────────────────────────────────────────────────────────
+
 function WatchLaterTab({
+  catalog,
   items,
   onMutation
 }: {
+  catalog: CatalogItem[];
   items: StoredItem[];
   onMutation: (state: StoredState, tasteGraph: TasteGraph) => Promise<void>;
 }) {
-  const queue = sortByUpdatedAt(items.filter((item) => item.state === "watch_later"));
+  const [sortBy, setSortBy] = useState<"date" | "title">("date");
+  const queue = useMemo(() => {
+    const filtered = items.filter((item) => item.state === "watch_later");
+    if (sortBy === "title") return [...filtered].sort((a, b) => a.title.localeCompare(b.title));
+    return sortByUpdatedAt(filtered);
+  }, [items, sortBy]);
 
   const handleWatch = async (item: StoredItem) => {
     const result = await applyStoredAction(
@@ -343,298 +408,79 @@ function WatchLaterTab({
   };
 
   if (queue.length === 0) {
-    return <EmptyState>Nothing is parked in Watch Later yet.</EmptyState>;
-  }
-
-  return (
-    <div className="record-grid">
-      {queue.map((item) => (
-        <article key={item.canonicalKey} className="record-card">
-          <div className="record-head">
-            <div>
-              <h3 className="record-title">{item.title}</h3>
-              <p className="record-meta">Saved {formatDate(item.updatedAt)}</p>
-            </div>
-            <span className="tag">QUEUE</span>
-          </div>
-
-          <div className="action-row">
-            {item.sourceUrl ? (
-              <a className="button button-solid" href={item.sourceUrl} rel="noreferrer" target="_blank">
-                OPEN TITLE
-              </a>
-            ) : null}
-            <button className="button" onClick={() => void handleWatch(item)} type="button">
-              WATCHED
-            </button>
-            <button className="button" onClick={() => void handleRemove(item)} type="button">
-              REMOVE
-            </button>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function SwipeDeckTab({
-  catalog,
-  onMutation,
-  state,
-  tasteGraph
-}: {
-  catalog: CatalogItem[];
-  onMutation: (state: StoredState, tasteGraph: TasteGraph) => Promise<void>;
-  state: StoredState;
-  tasteGraph: TasteGraph;
-}) {
-  const [cursor, setCursor] = useState(0);
-  const [feedback, setFeedback] = useState("");
-
-  const deck = useMemo(
-    () =>
-      getRecommendations(catalog, state, tasteGraph, {
-        exploration_mode: "balanced",
-        max_results: 40
-      }).map((entry) => entry.item),
-    [catalog, state, tasteGraph]
-  );
-
-  useEffect(() => {
-    setCursor(0);
-  }, [deck.length]);
-
-  const current = deck[cursor];
-
-  const act = async (nextState: "hidden" | "watched" | "watch_later", label: string) => {
-    if (!current) return;
-    const result = await applyCatalogAction(current, nextState, "swipe_deck");
-    setFeedback(label);
-    await onMutation(result.state, result.tasteGraph);
-    setCursor((value) => value + 1);
-  };
-
-  const skip = async () => {
-    if (!current) return;
-    await logUserAction("skipped", current.title, {
-      content_id: current.content_id,
-      source_url: current.jiohotstar_url,
-      context: "swipe_deck"
-    });
-    setFeedback("Skipped");
-    setCursor((value) => value + 1);
-  };
-
-  if (!current) {
-    return <EmptyState>The deck is empty. Build more profile signals and refresh the recommendations tab.</EmptyState>;
-  }
-
-  return (
-    <section className="deck-shell">
-      <div className="section-header">
-        <p>
-          Card {cursor + 1} of {deck.length}
-        </p>
-        <p>{feedback || "Use the deck to train the profile quickly."}</p>
-      </div>
-
-      <article className="deck-card">
-        <div className="deck-topline">
-          <span className="tag">{current.type.toUpperCase()}</span>
-          <span className="tag">{current.year ?? "NA"}</span>
-          <span className="tag">{current.language?.toUpperCase() ?? "NA"}</span>
-        </div>
-
-        <h2 className="deck-title">{current.title}</h2>
-        <p className="deck-summary">
-          {current.overview?.slice(0, 320) ?? "No overview available yet."}
-        </p>
-
-        <div className="tag-row">
-          {current.genres.slice(0, 6).map((genre) => (
-            <span key={genre} className="tag">
-              {genre}
-            </span>
-          ))}
-        </div>
-
-        <div className="deck-info">
-          <div>
-            <span>Cast</span>
-            <strong>{compactList(current.cast)}</strong>
-          </div>
-          <div>
-            <span>Director</span>
-            <strong>{compactList(current.directors)}</strong>
-          </div>
-          <div>
-            <span>Rating</span>
-            <strong>{current.vote_average?.toFixed(1) ?? "NA"}</strong>
-          </div>
-        </div>
-
-        <div className="action-row action-row-wide">
-          <button className="button" onClick={() => void act("hidden", "Hidden")} type="button">
-            HIDE
-          </button>
-          <button className="button" onClick={() => void skip()} type="button">
-            SKIP
-          </button>
-          <button className="button" onClick={() => void act("watch_later", "Saved for later")} type="button">
-            LATER
-          </button>
-          <button className="button button-solid" onClick={() => void act("watched", "Marked watched")} type="button">
-            WATCHED
-          </button>
-        </div>
-      </article>
-    </section>
-  );
-}
-
-function TasteTab({ tasteGraph }: { tasteGraph: TasteGraph }) {
-  const grouped = useMemo(() => {
-    const entries = Object.values(tasteGraph.edges).sort(
-      (left, right) => Math.abs(right.weight) - Math.abs(left.weight)
+    return (
+      <section className="tab-content animate-fadeIn">
+        <EmptyState icon="📋">
+          Your watchlist is empty. Save movies and shows for later from the Discover tab or from JioHotstar.
+        </EmptyState>
+      </section>
     );
-
-    return entries.reduce<Record<string, TasteEdge[]>>((accumulator, edge) => {
-      const key = edge.node_type;
-      accumulator[key] ??= [];
-      accumulator[key].push(edge);
-      return accumulator;
-    }, {});
-  }, [tasteGraph]);
-
-  const groups = Object.entries(grouped);
-
-  if (groups.length === 0) {
-    return <EmptyState>No taste edges yet. Hide and mark titles as watched to train the profile.</EmptyState>;
   }
 
   return (
-    <section className="stack">
-      <div className="section-header">
-        <p>{Object.keys(tasteGraph.edges).length} active signals.</p>
-        <p>{tasteGraph.centroid_updated_at ? `Centroid updated ${formatDate(tasteGraph.centroid_updated_at)}` : "Centroid not computed yet."}</p>
-      </div>
-
-      <div className="matrix-grid">
-        {groups.map(([group, edges]) => (
-          <article key={group} className="matrix-card">
-            <h3>{group.replace(/_/g, " ").toUpperCase()}</h3>
-            <div className="matrix-list">
-              {edges.slice(0, 12).map((edge) => (
-                <div key={edge.node_id} className="matrix-row">
-                  <span>{edge.node_id.split(":")[1] ?? edge.node_id}</span>
-                  <div className="matrix-track">
-                    <div
-                      className={`matrix-fill ${edge.weight >= 0 ? "positive" : "negative"}`}
-                      style={{ width: `${edgeMagnitude(edge)}%` }}
-                    />
-                  </div>
-                  <strong>{edge.weight.toFixed(2)}</strong>
-                </div>
-              ))}
-            </div>
-          </article>
-        ))}
-      </div>
-
-      {tasteGraph.taste_centroid ? (
-        <article className="detail-panel">
-          <div className="section-header">
-            <p>Embedding centroid</p>
-            <p>{tasteGraph.taste_centroid.length} dimensions</p>
-          </div>
-          <div className="vector-row">
-            {tasteGraph.taste_centroid.map((value, index) => (
-              <span key={index} className="tag">
-                d{index}:{value.toFixed(3)}
-              </span>
-            ))}
-          </div>
-        </article>
-      ) : null}
-    </section>
-  );
-}
-
-function CatalogTab({
-  catalog,
-  health,
-  onResync,
-  recentActions
-}: {
-  catalog: CatalogItem[];
-  health: AppHealth;
-  onResync: () => Promise<void>;
-  recentActions: UserAction[];
-}) {
-  const stats = useMemo(
-    () => [
-      { label: "Catalog titles", value: catalog.length.toLocaleString() },
-      { label: "Movies", value: catalog.filter((item) => item.type === "movie").length.toLocaleString() },
-      { label: "Shows", value: catalog.filter((item) => item.type === "show").length.toLocaleString() },
-      { label: "High confidence", value: catalog.filter((item) => item.availability_confidence === "high").length.toLocaleString() },
-      { label: "With URL", value: catalog.filter((item) => Boolean(item.jiohotstar_url)).length.toLocaleString() },
-      { label: "With embedding", value: catalog.filter((item) => Array.isArray(item.embedding)).length.toLocaleString() }
-    ],
-    [catalog]
-  );
-
-  return (
-    <section className="stack">
-      <div className="stat-grid">
-        {stats.map((stat) => (
-          <StatTile key={stat.label} label={stat.label} value={stat.value} />
-        ))}
-      </div>
-
-      <article className="detail-panel">
-        <div className="section-header">
-          <p>System state</p>
-          <p>Last refresh {health.lastRefreshLabel}</p>
-        </div>
-        <div className="health-grid">
-          <StatTile label="Database" value={health.dbStatus} />
-          <StatTile label="Action log" value={health.actionCount} />
-          <StatTile label="Catalog cache" value={health.catalogCount} />
-        </div>
-        <div className="action-row">
-          <button className="button button-solid" onClick={() => void onResync()} type="button">
-            REBUILD LOCAL CATALOG
+    <section className="tab-content animate-fadeIn">
+      <div className="toolbar">
+        <h2 className="toolbar__title">Watchlist <span className="toolbar__count">{queue.length}</span></h2>
+        <div className="toolbar__group">
+          <button className={`btn ${sortBy === "date" ? "btn-primary" : "btn-ghost"}`} onClick={() => setSortBy("date")} type="button">
+            Recent
+          </button>
+          <button className={`btn ${sortBy === "title" ? "btn-primary" : "btn-ghost"}`} onClick={() => setSortBy("title")} type="button">
+            A–Z
           </button>
         </div>
-      </article>
+      </div>
 
-      <article className="detail-panel">
-        <div className="section-header">
-          <p>Recent actions</p>
-          <p>{recentActions.length} shown</p>
-        </div>
+      <div className="poster-grid">
+        {queue.map((item) => {
+          const catalogItem = matchCatalogItem(catalog, item.title, item.sourceUrl);
+          if (catalogItem) {
+            return (
+              <PosterCard
+                key={item.canonicalKey}
+                item={catalogItem}
+                actions={
+                  <PosterCardActions
+                    onOpen={item.sourceUrl ? () => window.open(item.sourceUrl!, "_blank") : undefined}
+                    onWatched={() => void handleWatch(item)}
+                    onHide={() => void handleRemove(item)}
+                    showOpen={Boolean(item.sourceUrl)}
+                  />
+                }
+              />
+            );
+          }
 
-        {recentActions.length === 0 ? (
-          <EmptyState>No action history yet.</EmptyState>
-        ) : (
-          <div className="log-list">
-            {recentActions.map((action) => (
-              <div key={action.action_id} className="log-row">
-                <div>
-                  <strong>{action.title}</strong>
-                  <p>
-                    {action.action_type} / {action.context}
-                  </p>
-                </div>
-                <span>{formatDate(action.created_at)}</span>
+          // Fallback for items without catalog match
+          return (
+            <div key={item.canonicalKey} className="poster-card poster-card--text-only">
+              <div className="poster-card__fallback">
+                <span className="poster-card__fallback-icon">🎬</span>
+                <span className="poster-card__fallback-title">{item.title}</span>
               </div>
-            ))}
-          </div>
-        )}
-      </article>
+              <div className="poster-card__info">
+                <h3 className="poster-card__title">{item.title}</h3>
+                <div className="poster-card__meta">
+                  <span>Saved {relativeTime(item.updatedAt)}</span>
+                </div>
+              </div>
+              <div className="poster-card__actions poster-card__actions--visible">
+                <PosterCardActions
+                  onOpen={item.sourceUrl ? () => window.open(item.sourceUrl!, "_blank") : undefined}
+                  onWatched={() => void handleWatch(item)}
+                  onHide={() => void handleRemove(item)}
+                  showOpen={Boolean(item.sourceUrl)}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
+
+// ─── Manage Tab ────────────────────────────────────────────────────────────────
 
 function ManageTab({
   catalog,
@@ -695,27 +541,27 @@ function ManageTab({
   };
 
   return (
-    <section className="stack">
+    <section className="tab-content animate-fadeIn">
       <div className="toolbar">
-        <div className="button-group">
+        <div className="toolbar__group">
           {(["all", "hidden", "watched"] as const).map((option) => (
             <button
               key={option}
-              className={`button ${filter === option ? "button-solid" : ""}`}
+              className={`btn ${filter === option ? "btn-primary" : "btn-ghost"}`}
               onClick={() => setFilter(option)}
               type="button"
             >
-              {option.toUpperCase()}
+              {option.charAt(0).toUpperCase() + option.slice(1)}
             </button>
           ))}
         </div>
 
-        <div className="button-group">
-          <button className="button" onClick={exportState} type="button">
-            EXPORT
+        <div className="toolbar__group">
+          <button className="btn btn-ghost" onClick={exportState} type="button">
+            ↓ Export
           </button>
-          <button className="button button-solid" onClick={() => fileInputRef.current?.click()} type="button">
-            IMPORT
+          <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()} type="button">
+            ↑ Import
           </button>
           <input
             accept="application/json"
@@ -727,40 +573,49 @@ function ManageTab({
         </div>
       </div>
 
+      <div className="section-meta">
+        <span>{items.length} items</span>
+      </div>
+
       {items.length === 0 ? (
-        <EmptyState>No items in this filter.</EmptyState>
+        <EmptyState icon="📦">No items in this filter.</EmptyState>
       ) : (
-        <div className="record-grid">
+        <div className="poster-grid poster-grid--compact">
           {items.map((item) => {
             const catalogItem = matchCatalogItem(catalog, item.title, item.sourceUrl);
 
+            if (catalogItem) {
+              return (
+                <PosterCard
+                  key={item.canonicalKey}
+                  item={catalogItem}
+                  compact
+                  className={`poster-card--${item.state}`}
+                  actions={
+                    <PosterCardActions
+                      onOpen={item.sourceUrl ? () => window.open(item.sourceUrl!, "_blank") : undefined}
+                      onHide={() => void handleRemove(item)}
+                      showOpen={Boolean(item.sourceUrl)}
+                    />
+                  }
+                />
+              );
+            }
+
             return (
-              <article key={item.canonicalKey} className="record-card">
-                <div className="record-head">
-                  <div>
-                    <h3 className="record-title">{item.title}</h3>
-                    <p className="record-meta">
-                      {item.state.toUpperCase()} / {formatDate(item.updatedAt)}
-                    </p>
+              <div key={item.canonicalKey} className="poster-card poster-card--text-only poster-card--compact">
+                <div className="poster-card__fallback">
+                  <span className="poster-card__fallback-icon">🎬</span>
+                  <span className="poster-card__fallback-title">{item.title}</span>
+                </div>
+                <div className="poster-card__info">
+                  <h3 className="poster-card__title">{item.title}</h3>
+                  <div className="poster-card__meta">
+                    <span>{item.state.toUpperCase()}</span>
+                    <span>{relativeTime(item.updatedAt)}</span>
                   </div>
-                  <span className="tag">{catalogItem?.type.toUpperCase() ?? "LOCAL"}</span>
                 </div>
-
-                <p className="record-summary">
-                  {catalogItem?.overview?.slice(0, 180) ?? "This entry is stored locally and may not have a matched catalog record yet."}
-                </p>
-
-                <div className="action-row">
-                  {item.sourceUrl ? (
-                    <a className="button button-solid" href={item.sourceUrl} rel="noreferrer" target="_blank">
-                      OPEN TITLE
-                    </a>
-                  ) : null}
-                  <button className="button" onClick={() => void handleRemove(item)} type="button">
-                    REMOVE
-                  </button>
-                </div>
-              </article>
+              </div>
             );
           })}
         </div>
@@ -768,6 +623,181 @@ function ManageTab({
     </section>
   );
 }
+
+// ─── Taste Profile Tab ─────────────────────────────────────────────────────────
+
+function TasteTab({ tasteGraph }: { tasteGraph: TasteGraph }) {
+  const grouped = useMemo(() => {
+    const entries = Object.values(tasteGraph.edges).sort(
+      (left, right) => Math.abs(right.weight) - Math.abs(left.weight)
+    );
+
+    return entries.reduce<Record<string, TasteEdge[]>>((accumulator, edge) => {
+      const key = edge.node_type;
+      accumulator[key] ??= [];
+      accumulator[key].push(edge);
+      return accumulator;
+    }, {});
+  }, [tasteGraph]);
+
+  const groups = Object.entries(grouped);
+
+  if (groups.length === 0) {
+    return (
+      <section className="tab-content animate-fadeIn">
+        <EmptyState icon="◎">
+          No taste signals yet. Hide and mark titles as watched to train your profile.
+        </EmptyState>
+      </section>
+    );
+  }
+
+  const groupIcons: Record<string, string> = {
+    genre: "🎭",
+    actor: "🎬",
+    director: "🎥",
+    language: "🌐",
+    keyword: "🔑"
+  };
+
+  return (
+    <section className="tab-content animate-fadeIn">
+      <div className="section-meta">
+        <span>{Object.keys(tasteGraph.edges).length} active signals</span>
+        <span className="section-meta__divider">·</span>
+        <span>
+          {tasteGraph.centroid_updated_at
+            ? `Updated ${relativeTime(tasteGraph.centroid_updated_at)}`
+            : "Centroid not computed"}
+        </span>
+      </div>
+
+      <div className="taste-grid">
+        {groups.map(([group, edges]) => (
+          <article key={group} className="taste-group">
+            <h3 className="taste-group__title">
+              <span>{groupIcons[group] ?? "📊"}</span>
+              {group.replace(/_/g, " ")}
+            </h3>
+            <div className="taste-group__list">
+              {edges.slice(0, 12).map((edge) => (
+                <div key={edge.node_id} className="taste-bar">
+                  <span className="taste-bar__label">
+                    {edge.node_id.split(":")[1] ?? edge.node_id}
+                  </span>
+                  <div className="taste-bar__track">
+                    <div
+                      className={`taste-bar__fill ${edge.weight >= 0 ? "taste-bar__fill--positive" : "taste-bar__fill--negative"}`}
+                      style={{ width: `${edgeMagnitude(edge)}%` }}
+                    />
+                  </div>
+                  <strong className="taste-bar__value">
+                    {edge.weight > 0 ? "+" : ""}{edge.weight.toFixed(2)}
+                  </strong>
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {tasteGraph.taste_centroid && (
+        <article className="glass-panel">
+          <h3 className="glass-panel__title">Embedding Centroid</h3>
+          <p className="glass-panel__subtitle">{tasteGraph.taste_centroid.length} dimensions</p>
+          <div className="centroid-chips">
+            {tasteGraph.taste_centroid.map((value, index) => (
+              <span key={index} className="genre-tag genre-tag--mono">
+                d{index}: {value.toFixed(3)}
+              </span>
+            ))}
+          </div>
+        </article>
+      )}
+    </section>
+  );
+}
+
+// ─── System Health Tab ─────────────────────────────────────────────────────────
+
+function CatalogTab({
+  catalog,
+  health,
+  onResync,
+  recentActions
+}: {
+  catalog: CatalogItem[];
+  health: AppHealth;
+  onResync: () => Promise<void>;
+  recentActions: UserAction[];
+}) {
+  const stats = useMemo(
+    () => [
+      { label: "Total Titles", value: catalog.length.toLocaleString(), icon: "📀", variant: "info" as const },
+      { label: "Movies", value: catalog.filter((i) => i.type === "movie").length.toLocaleString(), icon: "🎬" },
+      { label: "Shows", value: catalog.filter((i) => i.type === "show").length.toLocaleString(), icon: "📺" },
+      { label: "High Confidence", value: catalog.filter((i) => i.availability_confidence === "high").length.toLocaleString(), icon: "✓", variant: "success" as const },
+      { label: "With URL", value: catalog.filter((i) => Boolean(i.jiohotstar_url)).length.toLocaleString(), icon: "🔗" },
+      { label: "With Embedding", value: catalog.filter((i) => Array.isArray(i.embedding)).length.toLocaleString(), icon: "🧬" }
+    ],
+    [catalog]
+  );
+
+  return (
+    <section className="tab-content animate-fadeIn">
+      {/* Stats grid */}
+      <div className="stat-grid">
+        {stats.map((stat) => (
+          <StatTile key={stat.label} {...stat} />
+        ))}
+      </div>
+
+      {/* System state */}
+      <article className="glass-panel">
+        <div className="glass-panel__header">
+          <h3 className="glass-panel__title">System State</h3>
+          <span className="glass-panel__subtitle">Last refresh {health.lastRefreshLabel}</span>
+        </div>
+        <div className="stat-grid stat-grid--compact">
+          <StatTile label="Database" value={health.dbStatus} icon="💾" variant={health.dbStatus === "ready" ? "success" : "warning"} />
+          <StatTile label="Action Log" value={health.actionCount} icon="📝" />
+          <StatTile label="Catalog Cache" value={health.catalogCount} icon="📦" />
+        </div>
+        <div className="glass-panel__actions">
+          <button className="btn btn-primary" onClick={() => void onResync()} type="button">
+            Rebuild Local Catalog
+          </button>
+        </div>
+      </article>
+
+      {/* Recent actions */}
+      <article className="glass-panel">
+        <div className="glass-panel__header">
+          <h3 className="glass-panel__title">Recent Actions</h3>
+          <span className="glass-panel__subtitle">{recentActions.length} shown</span>
+        </div>
+
+        {recentActions.length === 0 ? (
+          <EmptyState icon="📋">No action history yet.</EmptyState>
+        ) : (
+          <div className="action-log">
+            {recentActions.map((action) => (
+              <div key={action.action_id} className="action-log__row">
+                <div className="action-log__info">
+                  <strong>{action.title}</strong>
+                  <span className="action-log__meta">{action.action_type} · {action.context}</span>
+                </div>
+                <span className="action-log__time">{relativeTime(action.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </article>
+    </section>
+  );
+}
+
+// ─── Main App ──────────────────────────────────────────────────────────────────
 
 export function App() {
   const [activeTab, setActiveTab] = useState<TabId>("recommendations");
@@ -790,6 +820,8 @@ export function App() {
   const runtime = getRuntimeMode();
   const storageProvider = getStorageProvider();
 
+  // ─── Page bridge probe ─────────────────────────────────────────────────
+
   const refreshPageBridge = useCallback(async () => {
     if (runtime !== "extension" || typeof chrome === "undefined" || !chrome.tabs?.query || !chrome.tabs?.sendMessage) {
       setPageBridge({
@@ -806,57 +838,31 @@ export function App() {
       const tabId = tab?.id;
 
       if (typeof tabId !== "number") {
-        setPageBridge({
-          activeTabLabel: tabLabel,
-          status: "disconnected",
-          details: "no active tab"
-        });
+        setPageBridge({ activeTabLabel: tabLabel, status: "disconnected", details: "no active tab" });
         return;
       }
 
       const response = await new Promise<{
-        cards: number;
-        connected: boolean;
-        controls: number;
-        hidden: number;
-        url: string;
+        cards: number; connected: boolean; controls: number; hidden: number; url: string;
       } | null>((resolve) => {
         chrome.tabs.sendMessage(tabId, { type: "CURATOR_PAGE_PING" }, (value: unknown) => {
-          if (chrome.runtime.lastError) {
-            resolve(null);
-            return;
-          }
-
-          resolve((value as {
-            cards: number;
-            connected: boolean;
-            controls: number;
-            hidden: number;
-            url: string;
-          }) ?? null);
+          if (chrome.runtime.lastError) { resolve(null); return; }
+          resolve((value as { cards: number; connected: boolean; controls: number; hidden: number; url: string }) ?? null);
         });
       });
 
       if (!response) {
-        setPageBridge({
-          activeTabLabel: tabLabel,
-          status: "disconnected",
-          details: "no content script"
-        });
+        setPageBridge({ activeTabLabel: tabLabel, status: "disconnected", details: "no content script" });
         return;
       }
 
       setPageBridge({
         activeTabLabel: tabLabel,
         status: response.connected ? "connected" : "disconnected",
-        details: `${response.cards} cards / ${response.controls} controls`
+        details: `${response.cards} cards · ${response.controls} controls`
       });
     } catch {
-      setPageBridge({
-        activeTabLabel: "unknown",
-        status: "disconnected",
-        details: "bridge error"
-      });
+      setPageBridge({ activeTabLabel: "unknown", status: "disconnected", details: "bridge error" });
     }
   }, [runtime]);
 
@@ -866,7 +872,6 @@ export function App() {
       chrome.tabs.create({ url });
       return;
     }
-
     window.open(url, "_blank", "noopener,noreferrer");
   }, [runtime]);
 
@@ -904,6 +909,8 @@ export function App() {
     [refreshSupportData]
   );
 
+  // ─── Lifecycle ─────────────────────────────────────────────────────────
+
   useEffect(() => {
     void Promise.all([getStoredState(), getTasteGraph(), refreshSupportData()]).then(
       ([storedState, graph]) => {
@@ -913,9 +920,7 @@ export function App() {
     );
 
     void refreshPageBridge();
-    const bridgeTimer = window.setInterval(() => {
-      void refreshPageBridge();
-    }, 4000);
+    const bridgeTimer = window.setInterval(() => void refreshPageBridge(), 4000);
 
     const unsubscribeState = subscribeToStoredState(setState);
     const unsubscribeTaste = subscribeToTasteGraph(setLocalTasteGraph);
@@ -927,15 +932,17 @@ export function App() {
     };
   }, [refreshPageBridge, refreshSupportData]);
 
+  // ─── Derived state ────────────────────────────────────────────────────
+
   const uniqueItems = useMemo(() => getUniqueStoredItems(state), [state]);
-  const hiddenCount = uniqueItems.filter((item) => item.state === "hidden").length;
-  const watchedCount = uniqueItems.filter((item) => item.state === "watched").length;
-  const laterCount = uniqueItems.filter((item) => item.state === "watch_later").length;
+  const hiddenCount = uniqueItems.filter((i) => i.state === "hidden").length;
+  const watchedCount = uniqueItems.filter((i) => i.state === "watched").length;
+  const laterCount = uniqueItems.filter((i) => i.state === "watch_later").length;
   const tasteSignals = Object.keys(tasteGraph.edges).length;
 
   const handleCatalogAction = async (
     item: CatalogItem,
-    nextState: "hidden" | "watched" | "watch_later"
+    nextState: ItemState
   ) => {
     const result = await applyCatalogAction(item, nextState, "recommendations");
     await handleMutation(result.state, result.tasteGraph);
@@ -947,111 +954,85 @@ export function App() {
     await refreshSupportData();
   };
 
+  // ─── Tab content ──────────────────────────────────────────────────────
+
   const tabContent = (() => {
-    if (activeTab === "recommendations") {
-      return (
-        <RecommendationsTab
-          catalog={catalog}
-          onAction={handleCatalogAction}
-          state={state}
-          tasteGraph={tasteGraph}
-        />
-      );
+    switch (activeTab) {
+      case "recommendations":
+        return <RecommendationsTab catalog={catalog} onAction={handleCatalogAction} state={state} tasteGraph={tasteGraph} />;
+      case "swipe":
+        return <SwipeDeckTab catalog={catalog} onMutation={handleMutation} state={state} tasteGraph={tasteGraph} />;
+      case "watch-later":
+        return <WatchLaterTab catalog={catalog} items={uniqueItems} onMutation={handleMutation} />;
+      case "manage":
+        return <ManageTab catalog={catalog} onMutation={handleMutation} state={state} tasteGraph={tasteGraph} />;
+      case "taste":
+        return <TasteTab tasteGraph={tasteGraph} />;
+      case "catalog":
+        return <CatalogTab catalog={catalog} health={health} onResync={handleResync} recentActions={recentActions} />;
     }
-
-    if (activeTab === "swipe") {
-      return (
-        <SwipeDeckTab
-          catalog={catalog}
-          onMutation={handleMutation}
-          state={state}
-          tasteGraph={tasteGraph}
-        />
-      );
-    }
-
-    if (activeTab === "manage") {
-      return (
-        <ManageTab
-          catalog={catalog}
-          onMutation={handleMutation}
-          state={state}
-          tasteGraph={tasteGraph}
-        />
-      );
-    }
-
-    if (activeTab === "watch-later") {
-      return <WatchLaterTab items={uniqueItems} onMutation={handleMutation} />;
-    }
-
-    if (activeTab === "taste") {
-      return <TasteTab tasteGraph={tasteGraph} />;
-    }
-
-    return (
-      <CatalogTab
-        catalog={catalog}
-        health={health}
-        onResync={handleResync}
-        recentActions={recentActions}
-      />
-    );
   })();
 
-  return (
-    <div className="page-shell">
-      <div className="page-frame">
-        <header className="hero-block">
-          <div className="hero-copy">
-            <span className="hero-kicker">LOCAL-FIRST JIOHOTSTAR CURATION</span>
-            <h1>FILTER THE FEED.</h1>
-            <p>
-              Run the full product in the browser now, then load the same build as an extension when you want page-level filtering inside JioHotstar.
-            </p>
-          </div>
+  // ─── Render ────────────────────────────────────────────────────────────
 
-          <div className="hero-actions">
-            <button className="button button-solid" onClick={openFullApp} type="button">
-              OPEN FULL APP
+  return (
+    <div className="app-shell">
+      {/* Hero header */}
+      <header className="app-hero">
+        <div className="app-hero__content">
+          <span className="app-hero__kicker">JioHotstar Curator</span>
+          <h1 className="app-hero__title">
+            <span className="gradient-text">Filter the feed.</span>
+          </h1>
+          <p className="app-hero__desc">
+            AI-powered recommendations. Hide what you've seen. Discover what you'll love.
+          </p>
+
+          <div className="app-hero__actions">
+            <button className="btn btn-primary btn-lg" onClick={openFullApp} type="button">
+              Open Full App
             </button>
-            <a className="button" href="https://www.hotstar.com/in/home" rel="noreferrer" target="_blank">
-              OPEN JIOHOTSTAR
+            <a className="btn btn-ghost btn-lg" href="https://www.hotstar.com/in/home" rel="noreferrer" target="_blank">
+              Open JioHotstar
             </a>
           </div>
+        </div>
 
-          <div className="stat-grid">
-            <StatTile hint="Permanent suppressions" label="Hidden" value={hiddenCount} />
-            <StatTile hint="Already consumed" label="Watched" value={watchedCount} />
-            <StatTile hint="Queued for later" label="Watch later" value={laterCount} />
-            <StatTile hint="Learned profile edges" label="Taste signals" value={tasteSignals} />
-          </div>
+        {/* Quick stats */}
+        <div className="hero-stats">
+          <StatTile icon="👁" label="Hidden" value={hiddenCount} hint="Permanent" variant="danger" />
+          <StatTile icon="✓" label="Watched" value={watchedCount} hint="Consumed" variant="success" />
+          <StatTile icon="+" label="Watchlist" value={laterCount} hint="Queued" variant="info" />
+          <StatTile icon="◎" label="Signals" value={tasteSignals} hint="Profile" variant="warning" />
+        </div>
 
-          <HealthStrip
-            actionCount={health.actionCount}
-            catalogCount={health.catalogCount}
-            dbStatus={health.dbStatus}
-            pageBridge={pageBridge}
-            runtime={runtime}
-            storageProvider={storageProvider}
-          />
-        </header>
+        <HealthStrip
+          actionCount={health.actionCount}
+          catalogCount={health.catalogCount}
+          dbStatus={health.dbStatus}
+          pageBridge={pageBridge}
+          runtime={runtime}
+          storageProvider={storageProvider}
+        />
+      </header>
 
-        <nav className="tabbar" aria-label="Application tabs">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-              type="button"
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+      {/* Tab navigation */}
+      <nav className="tab-bar" aria-label="Application tabs">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`tab-bar__btn ${activeTab === tab.id ? "tab-bar__btn--active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+            type="button"
+          >
+            <span className="tab-bar__icon">{tab.icon}</span>
+            <span className="tab-bar__label">{tab.label}</span>
+          </button>
+        ))}
+      </nav>
 
-        <main className="content-shell">{tabContent}</main>
-      </div>
+      {/* Tab content */}
+      <main className="app-content">{tabContent}</main>
     </div>
   );
 }
