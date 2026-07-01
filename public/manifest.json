@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "JioHotstar Curator",
   "description": "AI-powered content curation for JioHotstar. Hide unwanted titles, track watched content, get personalized recommendations, swipe through suggestions, and import your IMDb history.",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "permissions": ["storage", "tabs", "alarms", "sidePanel"],
   "host_permissions": [
     "https://hotstar.com/*",
