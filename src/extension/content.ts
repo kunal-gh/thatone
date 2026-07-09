@@ -379,10 +379,21 @@ function showUndoToast(action: ItemState): void {
   }
 
   const label = action === "hidden" ? "Hidden" : action === "watched" ? "Marked watched" : "Saved for later";
-  toast.innerHTML = `<span>${label}</span><button id="curator-undo-btn">Undo</button>`;
+  toast.textContent = ""; // Clear existing content securely
+  
+  const span = document.createElement("span");
+  span.textContent = label;
+  
+  const btn = document.createElement("button");
+  btn.id = "curator-undo-btn";
+  btn.textContent = "Undo";
+  
+  toast.appendChild(span);
+  toast.appendChild(btn);
+
   toast.classList.add("show");
 
-  document.getElementById("curator-undo-btn")?.addEventListener("click", () => {
+  btn.addEventListener("click", () => {
     void undoLastAction();
     dismissToast();
   });

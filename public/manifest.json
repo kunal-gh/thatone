@@ -60,8 +60,7 @@
         "https://hotstar.com/*",
         "https://*.hotstar.com/*",
         "https://jiohotstar.com/*",
-        "https://*.jiohotstar.com/*",
-        "<all_urls>"
+        "https://*.jiohotstar.com/*"
       ]
     }
   ]

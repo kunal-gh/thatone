@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "security:scan": "node ./scripts/security/scan-secrets.mjs",
-    "verify": "npm test && npm run build && npm run security:scan",
+    "security:audit": "npm audit --audit-level=high",
+    "verify": "npm test && npm run build && npm run security:scan && npm run security:audit",
     "catalog:seed": "node --env-file=.env ./scripts/catalog/build-catalog.mjs",
     "catalog:tmdb": "node --env-file=.env ./scripts/catalog/build-tmdb-catalog.mjs"
   },
