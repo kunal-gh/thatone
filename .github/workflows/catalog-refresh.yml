@@ -34,7 +34,9 @@ jobs:
       - name: Build TMDB catalog
         env:
           TMDB_BEARER_TOKEN: ${{ secrets.TMDB_BEARER_TOKEN }}
-        run: npm run catalog:tmdb
+        run: |
+          touch .env
+          npm run catalog:tmdb
 
       - name: Check catalog output
         id: check
