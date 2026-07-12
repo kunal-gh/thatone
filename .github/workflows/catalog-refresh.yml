@@ -25,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
@@ -34,9 +34,7 @@ jobs:
       - name: Build TMDB catalog
         env:
           TMDB_BEARER_TOKEN: ${{ secrets.TMDB_BEARER_TOKEN }}
-        run: |
-          touch .env
-          npm run catalog:tmdb
+        run: npm run catalog:tmdb
 
       - name: Check catalog output
         id: check

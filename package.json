@@ -12,8 +12,8 @@
     "security:scan": "node ./scripts/security/scan-secrets.mjs",
     "security:audit": "npm audit --audit-level=high",
     "verify": "npm test && npm run build && npm run security:scan && npm run security:audit",
-    "catalog:seed": "node --env-file=.env ./scripts/catalog/build-catalog.mjs",
-    "catalog:tmdb": "node --env-file=.env ./scripts/catalog/build-tmdb-catalog.mjs"
+    "catalog:seed": "node --env-file-if-exists=.env ./scripts/catalog/build-catalog.mjs",
+    "catalog:tmdb": "node --env-file-if-exists=.env ./scripts/catalog/build-tmdb-catalog.mjs"
   },
   "dependencies": {
     "cheerio": "^1.1.2",
